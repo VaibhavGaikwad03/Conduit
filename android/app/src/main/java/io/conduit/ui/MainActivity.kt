@@ -31,6 +31,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +60,7 @@ import io.conduit.features.ConduitDeviceAdminReceiver
 import io.conduit.logging.ConduitLog
 import io.conduit.model.DeviceInfo
 import io.conduit.runtime.ConduitRuntime
+import io.conduit.runtime.TransferUi
 import io.conduit.service.ConduitService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -122,6 +125,7 @@ private fun ConduitScreen(
     val devices by ConduitRuntime.devices.collectAsState()
     val connected by ConduitRuntime.connectedCount.collectAsState()
     val lastEvent by ConduitRuntime.lastEvent.collectAsState()
+    val transfers by ConduitRuntime.transfers.collectAsState()
     val scope = CoroutineScope(Dispatchers.Main)
 
     // Whether notification access is granted — re-checked every time the app resumes
@@ -183,6 +187,20 @@ private fun ConduitScreen(
                         lastEvent, color = Cyan, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(14.dp),
                     )
+                }
+            }
+
+            // ---- File transfers (only while active) ----
+            if (transfers.isNotEmpty()) {
+                SectionLabel("FILE TRANSFERS")
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Card),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        transfers.forEach { t -> TransferItem(t) }
+                    }
                 }
             }
 
@@ -316,6 +334,40 @@ private fun ConduitScreen(
                 color = TextMuted, fontSize = 11.sp,
             )
         }
+    }
+}
+
+@Composable
+private fun TransferItem(t: TransferUi) {
+    val barColor = when {
+        t.failed -> MaterialTheme.colorScheme.error
+        t.done -> Success
+        else -> Cyan
+    }
+    val status = when {
+        t.failed -> "Failed"
+        t.done -> if (t.sending) "Sent ✓" else "Saved to Downloads ✓"
+        else -> "${if (t.sending) "Sending" else "Receiving"} · ${t.percent}%"
+    }
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                t.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(end = 8.dp),
+            )
+            Text(status, color = if (t.done) Success else TextMuted, fontSize = 12.sp)
+        }
+        LinearProgressIndicator(
+            progress = { t.percent / 100f },
+            color = barColor,
+            trackColor = Stroke,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 6.dp)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+        )
     }
 }
 

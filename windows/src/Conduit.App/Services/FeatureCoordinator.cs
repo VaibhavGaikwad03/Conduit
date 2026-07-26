@@ -24,6 +24,9 @@ public sealed class FeatureCoordinator
     public PhoneStatus Status { get; } = new();
     public event EventHandler? StatusChanged;
 
+    /// <summary>Forwards live file-transfer progress to the UI.</summary>
+    public event EventHandler<TransferProgress>? FileProgress;
+
     public FeatureCoordinator(
         ConduitNode node,
         ClipboardService clipboard,
@@ -41,6 +44,7 @@ public sealed class FeatureCoordinator
 
         _node.PacketReceived += OnPacket;
         _clipboard.LocalClipboardChanged += OnLocalClipboard;
+        _files.Progress += (_, p) => FileProgress?.Invoke(this, p);
     }
 
     private void OnLocalClipboard(object? sender, string text)

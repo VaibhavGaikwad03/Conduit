@@ -19,8 +19,11 @@ import io.conduit.logging.ConduitLog
 import io.conduit.network.ConduitNode
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
+import io.conduit.runtime.ConduitRuntime
+import io.conduit.runtime.TransferUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -42,13 +45,21 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
 
     /** One in-progress incoming transfer. Writes to Downloads via a MediaStore URI (Q+) or a file. */
     private class Incoming(
+        val transferId: String,
         val displayName: String,
+        val total: Long,
         val out: OutputStream,
         val uri: Uri?,          // non-null on Android 10+ (MediaStore)
         val legacyFile: File?,  // non-null on Android 9 and below
     ) {
         var nextSeq = 0
+        var received = 0L
+        var lastPercent = -1
         val pending = sortedMapOf<Int, ByteArray>()
+    }
+
+    private fun autoRemove(id: String) {
+        scope.launch { delay(4000); ConduitRuntime.removeTransfer(id) }
     }
 
     // ---- Sending --------------------------------------------------------------
@@ -60,6 +71,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
                 val size = querySize(uri)
                 val transferId = UUID.randomUUID().toString().replace("-", "")
                 log.i("Sending $name ($size bytes) to $deviceId")
+                ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, 0, size))
 
                 node.sendTo(deviceId, Packet.create(PacketType.FILE_OFFER) {
                     put("transferId", transferId); put("name", name)
@@ -67,6 +79,8 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
                 })
 
                 val sha = MessageDigest.getInstance("SHA-256")
+                var sent = 0L
+                var lastPercent = -1
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     val buffer = ByteArray(64 * 1024)
                     var seq = 0
@@ -79,12 +93,20 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
                         node.sendTo(deviceId, Packet.create(PacketType.FILE_CHUNK) {
                             put("transferId", transferId); put("seq", thisSeq); put("dataB64", b64)
                         })
+                        sent += read
+                        val pct = if (size > 0) ((sent * 100) / size).toInt() else 0
+                        if (pct != lastPercent) {
+                            lastPercent = pct
+                            ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, sent, size))
+                        }
                     }
                 }
                 val hash = sha.digest().joinToString("") { "%02x".format(it) }
                 node.sendTo(deviceId, Packet.create(PacketType.FILE_COMPLETE) {
                     put("transferId", transferId); put("ok", true); put("sha256", hash)
                 })
+                ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, size, size, done = true))
+                autoRemove(transferId)
                 log.i("Finished sending $name")
             } catch (e: Exception) {
                 log.e(e, "Failed to send file")
@@ -105,6 +127,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
     private fun begin(packet: Packet) {
         val transferId = packet.getString("transferId") ?: return
         val name = File(packet.getString("name") ?: "conduit-file").name
+        val size = packet.getLong("size")
         val mime = packet.getString("mime")?.takeIf { it.isNotBlank() } ?: "application/octet-stream"
         try {
             val inc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -118,16 +141,17 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                     ?: throw IOException("MediaStore insert returned null")
                 val out = resolver.openOutputStream(uri) ?: throw IOException("openOutputStream returned null")
-                Incoming(name, out, uri, null)
+                Incoming(transferId, name, size, out, uri, null)
             } else {
                 @Suppress("DEPRECATION")
                 val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
                 dir.mkdirs()
                 val dest = uniqueFile(File(dir, name))
-                Incoming(name, FileOutputStream(dest), null, dest)
+                Incoming(transferId, name, size, FileOutputStream(dest), null, dest)
             }
             incoming[transferId] = inc
             log.i("Receiving $name → Downloads")
+            ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = false, 0, size))
         } catch (e: Exception) {
             log.e(e, "Failed to start receiving $name")
         }
@@ -140,8 +164,17 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
         val data = Base64.decode(packet.getString("dataB64") ?: "", Base64.NO_WRAP)
         inc.pending[seq] = data
         while (inc.pending.containsKey(inc.nextSeq)) {
-            inc.out.write(inc.pending.remove(inc.nextSeq)!!)
+            val bytes = inc.pending.remove(inc.nextSeq)!!
+            inc.out.write(bytes)
+            inc.received += bytes.size
             inc.nextSeq++
+        }
+        val pct = if (inc.total > 0) ((inc.received * 100) / inc.total).toInt() else 0
+        if (pct != inc.lastPercent) {
+            inc.lastPercent = pct
+            ConduitRuntime.upsertTransfer(
+                TransferUi(inc.transferId, inc.displayName, sending = false, inc.received, inc.total),
+            )
         }
     }
 
@@ -161,9 +194,17 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
             }
 
             log.i("Received file → Downloads/${inc.displayName}")
+            ConduitRuntime.upsertTransfer(
+                TransferUi(inc.transferId, inc.displayName, sending = false, inc.total, inc.total, done = true),
+            )
+            autoRemove(inc.transferId)
             notifyReceived(inc.displayName)
         } catch (e: Exception) {
             log.e(e, "Failed to finalize ${inc.displayName}")
+            ConduitRuntime.upsertTransfer(
+                TransferUi(inc.transferId, inc.displayName, sending = false, inc.received, inc.total, failed = true),
+            )
+            autoRemove(inc.transferId)
         }
     }
 

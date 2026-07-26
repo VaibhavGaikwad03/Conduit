@@ -8,10 +8,22 @@ using Serilog;
 
 namespace Conduit.App.Services;
 
+/// <summary>A live snapshot of one file transfer, raised as it progresses.</summary>
+public sealed class TransferProgress
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public bool IsSending { get; init; }
+    public long Transferred { get; set; }
+    public long Total { get; set; }
+    public bool Done { get; set; }
+    public bool Failed { get; set; }
+    public int Percent => Total > 0 ? (int)Math.Clamp(Transferred * 100 / Total, 0, 100) : (Done ? 100 : 0);
+}
+
 /// <summary>
 /// Sends and receives files over the session as a series of base64 chunks
-/// (file-offer → file-chunk* → file-complete). Incoming files land in the
-/// configured download folder.
+/// (file-offer → file-chunk* → file-complete). Reports progress via <see cref="Progress"/>.
 /// </summary>
 public sealed class FileTransferService
 {
@@ -22,7 +34,8 @@ public sealed class FileTransferService
     private readonly string _downloadFolder;
     private readonly ConcurrentDictionary<string, Incoming> _incoming = new();
 
-    public event EventHandler<string>? FileReceived; // full path
+    public event EventHandler<string>? FileReceived;       // full path
+    public event EventHandler<TransferProgress>? Progress;  // live progress updates
 
     public FileTransferService(ConduitNode node, string downloadFolder)
     {
@@ -33,11 +46,14 @@ public sealed class FileTransferService
 
     private sealed class Incoming
     {
+        public required string TransferId;
+        public required string Name;
         public required string Path;
         public required FileStream Stream;
         public required long Size;
         public long Received;
         public int NextSeq;
+        public int LastPercent = -1;
         public readonly SortedDictionary<int, byte[]> Pending = new();
     }
 
@@ -51,40 +67,65 @@ public sealed class FileTransferService
         string transferId = Guid.NewGuid().ToString("N");
         _log.Information("Sending {Name} ({Size} bytes) to {Id}", info.Name, info.Length, deviceId);
 
-        await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileOffer, b =>
+        var progress = new TransferProgress
         {
-            b["transferId"] = transferId;
-            b["name"] = info.Name;
-            b["size"] = info.Length;
-            b["mime"] = "application/octet-stream";
-        }));
+            Id = transferId, Name = info.Name, IsSending = true, Total = info.Length
+        };
+        Report(progress);
 
-        using var sha = SHA256.Create();
-        await using var fs = File.OpenRead(path);
-        var buffer = new byte[ChunkSize];
-        int seq = 0, read;
-        while ((read = await fs.ReadAsync(buffer)) > 0)
+        try
         {
-            sha.TransformBlock(buffer, 0, read, null, 0);
-            string b64 = Convert.ToBase64String(buffer, 0, read);
-            int thisSeq = seq++;
-            await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileChunk, b =>
+            await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileOffer, b =>
             {
                 b["transferId"] = transferId;
-                b["seq"] = thisSeq;
-                b["dataB64"] = b64;
+                b["name"] = info.Name;
+                b["size"] = info.Length;
+                b["mime"] = "application/octet-stream";
             }));
-        }
-        sha.TransformFinalBlock([], 0, 0);
-        string hash = Convert.ToHexString(sha.Hash!).ToLowerInvariant();
 
-        await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileComplete, b =>
+            using var sha = SHA256.Create();
+            await using var fs = File.OpenRead(path);
+            var buffer = new byte[ChunkSize];
+            int seq = 0, read, lastPercent = -1;
+            while ((read = await fs.ReadAsync(buffer)) > 0)
+            {
+                sha.TransformBlock(buffer, 0, read, null, 0);
+                string b64 = Convert.ToBase64String(buffer, 0, read);
+                int thisSeq = seq++;
+                await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileChunk, b =>
+                {
+                    b["transferId"] = transferId;
+                    b["seq"] = thisSeq;
+                    b["dataB64"] = b64;
+                }));
+
+                progress.Transferred += read;
+                if (progress.Percent != lastPercent)
+                {
+                    lastPercent = progress.Percent;
+                    Report(progress);
+                }
+            }
+            sha.TransformFinalBlock([], 0, 0);
+            string hash = Convert.ToHexString(sha.Hash!).ToLowerInvariant();
+
+            await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileComplete, b =>
+            {
+                b["transferId"] = transferId;
+                b["ok"] = true;
+                b["sha256"] = hash;
+            }));
+            progress.Transferred = progress.Total;
+            progress.Done = true;
+            Report(progress);
+            _log.Information("Finished sending {Name}", info.Name);
+        }
+        catch (Exception ex)
         {
-            b["transferId"] = transferId;
-            b["ok"] = true;
-            b["sha256"] = hash;
-        }));
-        _log.Information("Finished sending {Name}", info.Name);
+            _log.Error(ex, "Failed sending {Name}", info.Name);
+            progress.Failed = true;
+            Report(progress);
+        }
     }
 
     // ---- Receiving ------------------------------------------------------------
@@ -108,12 +149,15 @@ public sealed class FileTransferService
 
         var incoming = new Incoming
         {
+            TransferId = transferId,
+            Name = name,
             Path = dest,
             Stream = File.Create(dest),
             Size = size
         };
         _incoming[transferId] = incoming;
         _log.Information("Receiving {Name} ({Size} bytes) → {Dest}", name, size, dest);
+        Report(new TransferProgress { Id = transferId, Name = name, IsSending = false, Total = size });
     }
 
     private void ReceiveChunk(Packet packet)
@@ -133,6 +177,17 @@ public sealed class FileTransferService
             inc.Pending.Remove(inc.NextSeq);
             inc.NextSeq++;
         }
+
+        var progress = new TransferProgress
+        {
+            Id = inc.TransferId, Name = inc.Name, IsSending = false,
+            Transferred = inc.Received, Total = inc.Size
+        };
+        if (progress.Percent != inc.LastPercent)
+        {
+            inc.LastPercent = progress.Percent;
+            Report(progress);
+        }
     }
 
     private void CompleteReceive(Packet packet)
@@ -145,13 +200,21 @@ public sealed class FileTransferService
 
         string expected = packet.GetString("sha256") ?? "";
         string actual = ComputeSha(inc.Path);
-        if (!string.IsNullOrEmpty(expected) && !string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+        bool ok = string.IsNullOrEmpty(expected) || string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+        if (!ok)
             _log.Warning("Checksum mismatch for {Path} (expected {E}, got {A})", inc.Path, expected, actual);
         else
             _log.Information("Received file OK: {Path}", inc.Path);
 
+        Report(new TransferProgress
+        {
+            Id = inc.TransferId, Name = inc.Name, IsSending = false,
+            Transferred = inc.Size, Total = inc.Size, Done = true, Failed = !ok
+        });
         FileReceived?.Invoke(this, inc.Path);
     }
+
+    private void Report(TransferProgress p) => Progress?.Invoke(this, p);
 
     private static string ComputeSha(string path)
     {

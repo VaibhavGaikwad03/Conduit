@@ -44,6 +44,28 @@ public sealed class DeviceRow : INotifyPropertyChanged
     }
 }
 
+public sealed class TransferRow : INotifyPropertyChanged
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+
+    private int _percent;
+    public int Percent { get => _percent; set => Set(ref _percent, value); }
+
+    private string _status = "";
+    public string Status { get => _status; set => Set(ref _status, value); }
+
+    private Brush _barBrush = new SolidColorBrush(Color.FromRgb(0x2F, 0xC6, 0xE8));
+    public Brush BarBrush { get => _barBrush; set => Set(ref _barBrush, value); }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+    {
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+}
+
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ConduitNode _node;
@@ -51,7 +73,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<DeviceRow> Devices { get; } = new();
     public ObservableCollection<MirroredNotification> Notifications { get; } = new();
+    public ObservableCollection<TransferRow> Transfers { get; } = new();
     public bool HasNotifications => Notifications.Count > 0;
+    public bool HasTransfers => Transfers.Count > 0;
 
     private DeviceRow? _selected;
     public DeviceRow? Selected
@@ -102,9 +126,43 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _node.PeerConnected += (_, _) => Dispatch(RefreshDevices);
         _node.PeerDisconnected += (_, _) => Dispatch(RefreshDevices);
         _coordinator.StatusChanged += (_, _) => Dispatch(UpdateStatus);
+        _coordinator.FileProgress += (_, p) => Dispatch(() => OnFileProgress(p));
         notifications.NotificationsChanged += (_, _) => Dispatch(() => RefreshNotifications(notifications));
 
         RefreshDevices();
+    }
+
+    private static readonly SolidColorBrush CyanBrush = new(Color.FromRgb(0x2F, 0xC6, 0xE8));
+    private static readonly SolidColorBrush GreenBrush = new(Color.FromRgb(0x34, 0xD3, 0x99));
+    private static readonly SolidColorBrush RedBrush = new(Color.FromRgb(0xFF, 0x6B, 0x6B));
+
+    private void OnFileProgress(TransferProgress p)
+    {
+        var row = Transfers.FirstOrDefault(t => t.Id == p.Id);
+        if (row is null)
+        {
+            row = new TransferRow { Id = p.Id, Name = p.Name };
+            Transfers.Add(row);
+            OnChanged(nameof(HasTransfers));
+        }
+
+        row.Percent = p.Percent;
+        row.Status = p.Failed
+            ? "Failed"
+            : p.Done
+                ? (p.IsSending ? "Sent ✓" : "Saved to Downloads ✓")
+                : $"{(p.IsSending ? "Sending" : "Receiving")} · {p.Percent}%";
+        row.BarBrush = p.Failed ? RedBrush : p.Done ? GreenBrush : CyanBrush;
+
+        if (p.Done || p.Failed)
+        {
+            var finished = row;
+            _ = Task.Delay(4000).ContinueWith(_ => Dispatch(() =>
+            {
+                Transfers.Remove(finished);
+                OnChanged(nameof(HasTransfers));
+            }));
+        }
     }
 
     private void RefreshNotifications(NotificationService svc)

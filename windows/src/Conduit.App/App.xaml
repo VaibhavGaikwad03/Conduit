@@ -4,6 +4,7 @@
              xmlns:local="clr-namespace:Conduit.App">
     <Application.Resources>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <!-- ============ Brand palette (matches the Conduit logo) ============ -->
         <Color x:Key="BgColor">#0A1622</Color>

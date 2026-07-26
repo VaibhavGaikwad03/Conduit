@@ -109,6 +109,34 @@
             <!-- Dashboard -->
             <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Padding="0,0,4,0">
                 <StackPanel>
+                    <!-- File transfers (only while active) -->
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
+                            Visibility="{Binding HasTransfers, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="FILE TRANSFERS" Style="{StaticResource Section}"/>
+                            <ItemsControl ItemsSource="{Binding Transfers}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,10">
+                                            <Grid>
+                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource Fg}"
+                                                           FontWeight="SemiBold" FontSize="13"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="360"
+                                                           HorizontalAlignment="Left"/>
+                                                <TextBlock Text="{Binding Status}" HorizontalAlignment="Right"
+                                                           Foreground="{StaticResource Muted}" FontSize="12"/>
+                                            </Grid>
+                                            <ProgressBar Height="6" Minimum="0" Maximum="100"
+                                                         Value="{Binding Percent}" Foreground="{Binding BarBrush}"
+                                                         Background="{StaticResource Stroke}" BorderThickness="0"
+                                                         Margin="0,6,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Phone status -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16">
                         <StackPanel>
