@@ -1,6 +1,7 @@
 package io.conduit.ui
 
 import android.Manifest
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -53,6 +54,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import io.conduit.R
+import io.conduit.features.ConduitDeviceAdminReceiver
 import io.conduit.logging.ConduitLog
 import io.conduit.model.DeviceInfo
 import io.conduit.runtime.ConduitRuntime
@@ -77,6 +79,19 @@ class MainActivity : ComponentActivity() {
                     onOpenNotificationAccess = {
                         startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                     },
+                    onEnableDeviceAdmin = {
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(
+                                DevicePolicyManager.EXTRA_DEVICE_ADMIN,
+                                ConduitDeviceAdminReceiver.component(this@MainActivity),
+                            )
+                            putExtra(
+                                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "Allow Conduit to lock this phone from your PC.",
+                            )
+                        }
+                        startActivity(intent)
+                    },
                 )
             }
         }
@@ -96,7 +111,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun ConduitScreen(onOpenNotificationAccess: () -> Unit) {
+private fun ConduitScreen(
+    onOpenNotificationAccess: () -> Unit,
+    onEnableDeviceAdmin: () -> Unit,
+) {
     val devices by ConduitRuntime.devices.collectAsState()
     val connected by ConduitRuntime.connectedCount.collectAsState()
     val lastEvent by ConduitRuntime.lastEvent.collectAsState()
@@ -107,10 +125,12 @@ private fun ConduitScreen(onOpenNotificationAccess: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var notifGranted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
+    var adminActive by remember { mutableStateOf(isDeviceAdminActive(context)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 notifGranted = isNotificationAccessGranted(context)
+                adminActive = isDeviceAdminActive(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -238,6 +258,54 @@ private fun ConduitScreen(onOpenNotificationAccess: () -> Unit) {
                 }
             }
 
+            Spacer(Modifier.height(12.dp))
+
+            // ---- Remote lock (device admin) ----
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Card),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Remote lock", color = TextHi,
+                            fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (adminActive) {
+                            Box(Modifier.size(9.dp).clip(CircleShape).background(Success))
+                            Spacer(Modifier.width(6.dp))
+                            Text("On", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        }
+                    }
+                    if (adminActive) {
+                        Text(
+                            "Your PC can lock this phone's screen.",
+                            color = TextMuted, fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        )
+                        OutlinedButton(
+                            onClick = onEnableDeviceAdmin,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                        ) { Text("Manage", color = TextHi, fontWeight = FontWeight.SemiBold) }
+                    } else {
+                        Text(
+                            "Let your PC lock this phone. Requires device-admin permission.",
+                            color = TextMuted, fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        )
+                        Button(
+                            onClick = onEnableDeviceAdmin,
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                        ) { Text("Enable remote lock", fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
             Text(
                 "Conduit connects over your local Wi-Fi. Nothing leaves your network.",
@@ -342,3 +410,9 @@ private fun EmptyState() {
 /** True when the user has granted Conduit notification access (the listener is enabled). */
 private fun isNotificationAccessGranted(context: Context): Boolean =
     NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+/** True when Conduit is an active Device Admin (so the PC can lock the phone). */
+private fun isDeviceAdminActive(context: Context): Boolean {
+    val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    return dpm.isAdminActive(ConduitDeviceAdminReceiver.component(context))
+}

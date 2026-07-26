@@ -56,6 +56,19 @@
             android:name=".features.RingStopReceiver"
             android:exported="false" />
 
+        <!-- Device admin so the PC can lock the phone (user must grant it once) -->
+        <receiver
+            android:name=".features.ConduitDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Mirrors notifications to the PC -->
         <service
             android:name=".features.ConduitNotificationListener"
