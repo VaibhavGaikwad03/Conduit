@@ -1,6 +1,7 @@
 package io.conduit.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -32,16 +33,25 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import io.conduit.R
 import io.conduit.logging.ConduitLog
 import io.conduit.model.DeviceInfo
@@ -91,6 +101,21 @@ private fun ConduitScreen(onOpenNotificationAccess: () -> Unit) {
     val connected by ConduitRuntime.connectedCount.collectAsState()
     val lastEvent by ConduitRuntime.lastEvent.collectAsState()
     val scope = CoroutineScope(Dispatchers.Main)
+
+    // Whether notification access is granted — re-checked every time the app resumes
+    // (e.g. after the user toggles it in system settings).
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var notifGranted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notifGranted = isNotificationAccessGranted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Box(
         Modifier
@@ -173,18 +198,43 @@ private fun ConduitScreen(onOpenNotificationAccess: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Notification mirroring", color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text(
-                        "Show your phone's notifications on your PC. Requires notification access.",
-                        color = TextMuted, fontSize = 13.sp,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                    )
-                    Button(
-                        onClick = onOpenNotificationAccess,
-                        colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                    ) { Text("Enable notification access", fontWeight = FontWeight.SemiBold) }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Notification mirroring", color = TextHi,
+                            fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (notifGranted) {
+                            Box(Modifier.size(9.dp).clip(CircleShape).background(Success))
+                            Spacer(Modifier.width(6.dp))
+                            Text("On", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        }
+                    }
+
+                    if (notifGranted) {
+                        Text(
+                            "Your phone's notifications appear on your PC.",
+                            color = TextMuted, fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        )
+                        OutlinedButton(
+                            onClick = onOpenNotificationAccess,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                        ) { Text("Manage access", color = TextHi, fontWeight = FontWeight.SemiBold) }
+                    } else {
+                        Text(
+                            "Show your phone's notifications on your PC. Requires notification access.",
+                            color = TextMuted, fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+                        )
+                        Button(
+                            onClick = onOpenNotificationAccess,
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                        ) { Text("Enable notification access", fontWeight = FontWeight.SemiBold) }
+                    }
                 }
             }
 
@@ -288,3 +338,7 @@ private fun EmptyState() {
         }
     }
 }
+
+/** True when the user has granted Conduit notification access (the listener is enabled). */
+private fun isNotificationAccessGranted(context: Context): Boolean =
+    NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
