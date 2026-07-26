@@ -134,6 +134,8 @@ public sealed class PeerConnection : IAsyncDisposable
                 await SendAsync(Packet.Create(PacketType.Pong), ct).ConfigureAwait(false);
                 continue;
             }
+            if (packet.Type == PacketType.Pong)
+                continue; // heartbeat ack — nothing to route
 
             _log.Verbose("Recv {Type} from {Peer}", packet.Type, Peer);
             PacketReceived?.Invoke(this, packet);

@@ -97,6 +97,7 @@ class PeerConnection(
                 send(Packet.create(PacketType.PONG))
                 continue
             }
+            if (packet.type == PacketType.PONG) continue // heartbeat ack — nothing to route
             onPacket?.invoke(packet)
         }
     }
