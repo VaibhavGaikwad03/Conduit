@@ -1,0 +1,113 @@
+# Conduit Wire Protocol v1
+
+This document is the single source of truth shared by the Windows and Android apps.
+Both implementations MUST stay in sync with it.
+
+## Ports
+
+| Purpose             | Port | Transport |
+|---------------------|------|-----------|
+| Discovery beacon    | 5461 | UDP (broadcast) |
+| Session / features  | 5462 | TCP |
+
+## 1. Discovery (UDP 5461)
+
+Each device broadcasts a JSON **identity beacon** to `255.255.255.255:5461` every 3s and
+whenever the app starts. Listeners de-duplicate by `deviceId`.
+
+```json
+{
+  "conduit": 1,
+  "deviceId": "b6f1c8e2-...",
+  "name": "Vaibhav's Galaxy",
+  "type": "android",          // "android" | "windows"
+  "tcpPort": 5462,
+  "protocol": 1
+}
+```
+
+A device that receives a beacon from a **paired** peer immediately opens a TCP session
+to `senderIp:tcpPort` (if not already connected). Unpaired peers just appear in the UI.
+
+## 2. Session framing (TCP 5462)
+
+Every message on the TCP stream is **length-prefixed**:
+
+```
++------------------+---------------------------+
+| 4 bytes (uint32) | payload (N bytes)         |
+| big-endian = N   | AES-256-GCM ciphertext OR |
+|                  | plaintext during handshake|
++------------------+---------------------------+
+```
+
+- During the **handshake** (packets `identity`, `pair-request`, `pair-response`),
+  the payload is plaintext UTF-8 JSON.
+- After the shared key is established, every payload is `nonce(12) || ciphertext || tag(16)`
+  where the plaintext is UTF-8 JSON. See §5.
+
+## 3. Packet envelope
+
+Every decrypted payload is a JSON object with this envelope:
+
+```json
+{
+  "id": "uuid",              // unique per packet
+  "type": "clipboard",       // see packet types below
+  "ts": 1737835200000,       // unix millis
+  "body": { }                // type-specific, see below
+}
+```
+
+## 4. Packet types
+
+| type                  | direction        | body |
+|-----------------------|------------------|------|
+| `identity`            | both (handshake) | `{ deviceId, name, deviceType, protocol, publicKey }` |
+| `pair-request`        | initiator        | `{ publicKey, code }` (code = 6 digits) |
+| `pair-response`       | responder        | `{ accepted: bool, publicKey }` |
+| `ping`                | both             | `{}` |
+| `pong`                | both             | `{}` |
+| `clipboard`           | both             | `{ content, contentType: "text" }` |
+| `file-offer`          | both             | `{ transferId, name, size, mime }` |
+| `file-chunk`          | both             | `{ transferId, seq, dataB64 }` |
+| `file-complete`       | both             | `{ transferId, ok, sha256 }` |
+| `notification`        | android → win    | `{ key, appName, title, text, iconB64?, canReply, actions:[] }` |
+| `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
+| `media-state`         | both             | `{ playing, title, artist, app, position, duration, volume }` |
+| `media-command`       | both             | `{ command: "play"\|"pause"\|"next"\|"prev"\|"volume", value? }` |
+| `remote-command`      | both             | `{ command: "lock"\|"sleep"\|"ring"\|"screenshot" }` |
+| `battery`             | android → win    | `{ level, charging, temperature }` |
+| `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
+| `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
+| `sms-send`            | win → android    | `{ address, body }` |
+| `error`               | both             | `{ code, message }` |
+
+## 5. Encryption
+
+Key exchange uses **ECDH over NIST P-256** (natively available on both .NET and Android's
+`java.security`). Public keys are exchanged as base64 SubjectPublicKeyInfo (X.509) DER.
+
+1. On connect, both sides send `identity` including their base64 **public key**.
+2. Each side computes the shared secret via ECDH(ourPrivate, theirPublic).
+3. The AES-256 key = SHA-256(sharedSecret).
+4. Every post-handshake frame: `nonce = random(12)`, `ct = AES-256-GCM(key, nonce, json)`,
+   frame payload = `nonce || ct || tag`.
+
+## 6. Pairing handshake (first meeting)
+
+```
+A ──identity──▶ B          (exchange deviceId + publicKey)
+A ◀──identity── B
+A ──pair-request(code)──▶ B   A shows the 6-digit code
+                              B shows the same code; user taps "Pair"
+A ◀──pair-response(accepted)── B
+        both persist the peer in their trusted store
+```
+
+After pairing, reconnections skip straight to `identity` → encrypted session.
+
+## 7. Versioning
+
+`protocol` is an integer. A device rejects sessions whose `protocol` it does not support
+and sends an `error` packet with code `unsupported-protocol`.

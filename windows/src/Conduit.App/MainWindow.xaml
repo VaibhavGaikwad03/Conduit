@@ -1,0 +1,96 @@
+<Window x:Class="Conduit.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Conduit" Height="620" Width="920"
+        Icon="pack://application:,,,/Assets/conduit.ico"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Fg}"
+        FontFamily="Segoe UI" WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="300"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left: devices -->
+        <DockPanel Grid.Column="0" Margin="0,0,12,0">
+            <TextBlock Text="Devices" DockPanel.Dock="Top" FontSize="20" FontWeight="Bold" Margin="0,0,0,4"/>
+            <TextBlock x:Name="SelfLabel" DockPanel.Dock="Top" Foreground="{StaticResource Muted}"
+                       Margin="0,0,0,10" Text="{Binding SelfName}"/>
+            <Border DockPanel.Dock="Bottom" Background="{StaticResource Panel}" CornerRadius="8" Padding="10" Margin="0,10,0,0">
+                <StackPanel>
+                    <Button Content="Pair with selected" Click="OnPair" HorizontalAlignment="Stretch" Margin="0,0,0,6"/>
+                    <Button Content="Connect" Click="OnConnect" HorizontalAlignment="Stretch"
+                            Background="#3A3D4D"/>
+                </StackPanel>
+            </Border>
+            <ListBox x:Name="DeviceList" Background="{StaticResource Panel}" BorderThickness="0"
+                     Foreground="{StaticResource Fg}"
+                     ItemsSource="{Binding Devices}" SelectedItem="{Binding Selected, Mode=TwoWay}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="4">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                            <TextBlock Text="{Binding Status}" Foreground="{StaticResource Muted}" FontSize="12"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+
+        <!-- Right: dashboard + actions + logs -->
+        <TabControl Grid.Column="1" Background="{StaticResource Panel}" BorderThickness="0">
+            <TabItem Header="Dashboard">
+                <StackPanel Margin="16">
+                    <TextBlock Text="Phone status" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <Border Background="{StaticResource Bg}" CornerRadius="8" Padding="12">
+                        <TextBlock x:Name="StatusText" Text="{Binding PhoneStatus}" TextWrapping="Wrap"/>
+                    </Border>
+
+                    <TextBlock Text="Actions" FontSize="16" FontWeight="Bold" Margin="0,20,0,8"/>
+                    <WrapPanel>
+                        <Button Content="Send clipboard →" Click="OnSendClipboard"/>
+                        <Button Content="Send file…" Click="OnSendFile"/>
+                        <Button Content="Lock phone" Click="OnLockPhone"/>
+                        <Button Content="Ring phone" Click="OnRingPhone"/>
+                    </WrapPanel>
+
+                    <TextBlock Text="Media remote (controls the phone)" FontSize="14" FontWeight="Bold" Margin="0,20,0,8"/>
+                    <WrapPanel>
+                        <Button Content="⏮ Prev" Click="OnMediaPrev"/>
+                        <Button Content="⏯ Play/Pause" Click="OnMediaPlayPause"/>
+                        <Button Content="⏭ Next" Click="OnMediaNext"/>
+                    </WrapPanel>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Notifications">
+                <ListBox x:Name="NotifList" Background="{StaticResource Panel}" BorderThickness="0"
+                         Foreground="{StaticResource Fg}" ItemsSource="{Binding Notifications}" Margin="8">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="6">
+                                <TextBlock FontWeight="Bold">
+                                    <Run Text="{Binding AppName}"/> — <Run Text="{Binding Title}"/>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Text}" Foreground="{StaticResource Muted}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </TabItem>
+
+            <TabItem Header="Logs">
+                <DockPanel Margin="8">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                        <Button Content="Refresh" Click="OnRefreshLogs"/>
+                        <Button Content="Open logs folder" Click="OnOpenLogs" Background="#3A3D4D"/>
+                    </StackPanel>
+                    <TextBox x:Name="LogBox" IsReadOnly="True" Background="{StaticResource Bg}"
+                             Foreground="#B8FFB8" FontFamily="Consolas" FontSize="12"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap"
+                             HorizontalScrollBarVisibility="Auto"/>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

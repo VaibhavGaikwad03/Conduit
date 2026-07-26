@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base theme; Jetpack Compose paints the actual UI on top. -->
+    <style name="Theme.Conduit" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/conduit_bg</item>
+        <item name="android:statusBarColor">@color/conduit_bg</item>
+    </style>
+</resources>

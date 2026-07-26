@@ -1,0 +1,17 @@
+# --- Windows / .NET ---
+windows/**/bin/
+windows/**/obj/
+*.user
+
+# --- Android / Gradle ---
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.iml
+
+# --- misc ---
+.DS_Store
+Thumbs.db
