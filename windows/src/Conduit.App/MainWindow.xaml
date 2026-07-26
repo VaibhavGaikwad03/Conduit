@@ -156,7 +156,7 @@
                                 <Button Style="{StaticResource GhostButton}" Margin="0,0,6,10" Content="📋  Send clipboard" Click="OnSendClipboard"/>
                                 <Button Style="{StaticResource GhostButton}" Margin="6,0,0,10" Content="📁  Send file…" Click="OnSendFile"/>
                                 <Button Style="{StaticResource GhostButton}" Margin="0,0,6,0" Content="🔒  Lock phone" Click="OnLockPhone"/>
-                                <Button Style="{StaticResource GhostButton}" Margin="6,0,0,0" Content="🔔  Ring phone" Click="OnRingPhone"/>
+                                <Button x:Name="RingButton" Style="{StaticResource GhostButton}" Margin="6,0,0,0" Content="🔔  Ring phone" Click="OnRingPhone"/>
                             </UniformGrid>
                         </StackPanel>
                     </Border>

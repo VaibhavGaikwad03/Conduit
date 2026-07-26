@@ -123,9 +123,22 @@ public partial class MainWindow : Window
         if (TargetDevice() is { } d) await _coordinator.SendRemoteCommandAsync(d.DeviceId, "lock");
     }
 
+    private bool _ringing;
     private async void OnRingPhone(object sender, RoutedEventArgs e)
     {
-        if (TargetDevice() is { } d) await _coordinator.SendRemoteCommandAsync(d.DeviceId, "ring");
+        if (TargetDevice() is not { } d) return;
+        if (_ringing)
+        {
+            await _coordinator.SendRemoteCommandAsync(d.DeviceId, "ring-stop");
+            _ringing = false;
+            RingButton.Content = "🔔  Ring phone";
+        }
+        else
+        {
+            await _coordinator.SendRemoteCommandAsync(d.DeviceId, "ring");
+            _ringing = true;
+            RingButton.Content = "🔕  Stop ringing";
+        }
     }
 
     private async void OnMediaPrev(object sender, RoutedEventArgs e)

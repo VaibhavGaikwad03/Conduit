@@ -51,6 +51,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Stops the "find my phone" ring from its notification action -->
+        <receiver
+            android:name=".features.RingStopReceiver"
+            android:exported="false" />
+
         <!-- Mirrors notifications to the PC -->
         <service
             android:name=".features.ConduitNotificationListener"

@@ -76,7 +76,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
 | `media-state`         | both             | `{ playing, title, artist, app, position, duration, volume }` |
 | `media-command`       | both             | `{ command: "play"\|"pause"\|"next"\|"prev"\|"volume", value? }` |
-| `remote-command`      | both             | `{ command: "lock"\|"sleep"\|"ring"\|"screenshot" }` |
+| `remote-command`      | both             | `{ command: "lock"\|"sleep"\|"ring"\|"ring-stop"\|"screenshot" }` |
 | `battery`             | android → win    | `{ level, charging, temperature }` |
 | `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
