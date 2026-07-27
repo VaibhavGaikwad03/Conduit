@@ -2,6 +2,7 @@ package io.conduit.features
 
 import android.content.Context
 import android.media.AudioManager
+import android.os.SystemClock
 import android.view.KeyEvent
 import io.conduit.logging.ConduitLog
 
@@ -32,7 +33,11 @@ class MediaFeature(context: Context) {
     }
 
     private fun tap(keyCode: Int) {
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        // Both events must carry a real, shared downTime; media sessions pair the UP to a
+        // matching DOWN by timestamp and silently drop key events stamped 0 (the default from
+        // the two-arg KeyEvent constructor), which is what made playback control flaky.
+        val now = SystemClock.uptimeMillis()
+        audio.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0))
+        audio.dispatchMediaKeyEvent(KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0))
     }
 }
