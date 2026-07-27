@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -203,6 +204,17 @@ private fun ConduitScreen(
             if (ok) "Clipboard sent to ${device.name}" else "Not connected to ${device.name}"
     }
 
+    fun sendMediaCommand(device: DeviceInfo, command: String, value: Double? = null) {
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.MEDIA_COMMAND) {
+                put("command", command)
+                if (value != null) put("value", value)
+            },
+        ) ?: false
+        if (!ok) ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
+    }
+
     fun disconnect(device: DeviceInfo) {
         ConduitRuntime.node?.disconnect(device.deviceId)
         ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
@@ -267,6 +279,7 @@ private fun ConduitScreen(
                 onMenu = { openDrawer() },
                 onSendFile = { filePicker.launch("*/*") },
                 onSendClipboard = { openDevice?.let { sendClipboard(it) } },
+                onMediaCommand = { cmd, value -> openDevice?.let { sendMediaCommand(it, cmd, value) } },
                 onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
                 onDisconnect = { openDevice?.let { disconnect(it) } },
             )
@@ -453,6 +466,7 @@ private fun MainContent(
     onMenu: () -> Unit,
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
+    onMediaCommand: (String, Double?) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -512,6 +526,7 @@ private fun MainContent(
                     connected = deviceConnected,
                     onSendFile = onSendFile,
                     onSendClipboard = onSendClipboard,
+                    onMediaCommand = onMediaCommand,
                     onPairOrConnect = onPairOrConnect,
                     onDisconnect = onDisconnect,
                 )
@@ -562,6 +577,7 @@ private fun DeviceDetail(
     connected: Boolean,
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
+    onMediaCommand: (String, Double?) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -596,6 +612,9 @@ private fun DeviceDetail(
                 ActionRow("📋", "Send clipboard", "Copy text here, then send it over", onSendClipboard)
             }
         }
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("CONTROL PC MEDIA")
+        MediaRemoteCard(onMediaCommand)
         Spacer(Modifier.height(12.dp))
         OutlinedButton(
             onClick = onDisconnect,
@@ -627,6 +646,52 @@ private fun DeviceDetail(
                 }
             }
         }
+    }
+}
+
+/**
+ * A remote for whatever is playing on the PC. Each button sends a media-command packet the
+ * Windows side turns into a hardware media key, so it drives Spotify, browsers, etc. without
+ * any per-app integration. Volume nudges one step at a time (value either side of 0.5).
+ */
+@Composable
+private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MediaButton("⏮", Modifier.weight(1f)) { onCommand("prev", null) }
+                MediaButton("⏯", Modifier.weight(1f), primary = true) { onCommand("pause", null) }
+                MediaButton("⏭", Modifier.weight(1f)) { onCommand("next", null) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MediaButton("🔉", Modifier.weight(1f)) { onCommand("volume", 0.4) }
+                MediaButton("🔇", Modifier.weight(1f)) { onCommand("mute", null) }
+                MediaButton("🔊", Modifier.weight(1f)) { onCommand("volume", 0.6) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaButton(label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
+    if (primary) {
+        Button(
+            onClick = onClick,
+            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+            shape = RoundedCornerShape(10.dp),
+            modifier = modifier.height(48.dp),
+        ) { Text(label, fontSize = 20.sp) }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            shape = RoundedCornerShape(10.dp),
+            modifier = modifier.height(48.dp),
+        ) { Text(label, fontSize = 20.sp, color = TextHi) }
     }
 }
 
