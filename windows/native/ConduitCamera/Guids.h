@@ -4,7 +4,9 @@
 // changing them orphans any existing registration.
 #pragma once
 
-#include <initguid.h>
+// This header only declares the CLSID (extern). Exactly one .cpp per binary must
+// #include <initguid.h> BEFORE this header to emit the actual GUID storage —
+// dllmain.cpp for the DLL, TestHost.cpp for the test exe.
 
 // {8E14F9A2-3B7C-4D5E-A6F0-1C2B3D4E5F60}
 DEFINE_GUID(CLSID_ConduitCameraSource,
@@ -14,5 +16,6 @@ DEFINE_GUID(CLSID_ConduitCameraSource,
 #define CONDUIT_CAMERA_FRIENDLY_NAME L"Conduit Camera"
 
 // Named shared-memory section the C# host writes decoded NV12 frames into and
-// the native source reads from. "Local\\" scopes it to the current session.
-#define CONDUIT_CAMERA_SHARED_NAME L"Local\\ConduitCameraFrame"
+// the native source reads from. "Global\\" so it crosses sessions: the source
+// runs in the session-0 Frame Server while the host writes from the user session.
+#define CONDUIT_CAMERA_SHARED_NAME L"Global\\ConduitCameraFrame"

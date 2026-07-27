@@ -3,6 +3,7 @@
 #include <mfidl.h>
 #include <mfapi.h>
 #include <mutex>
+#include "SharedFrameIO.h"
 
 class ConduitMediaSource;
 
@@ -44,7 +45,11 @@ private:
     ~ConduitMediaStream();
     HRESULT Init();
     HRESULT CheckShutdown() const;
-    HRESULT CreateTestSample(IMFSample** sample);
+    HRESULT CreateSample(IMFSample** sample);
+    void FillTestPattern(BYTE* nv12);
+
+    ConduitFrameReader _reader;      // Live frames from the host, when present.
+    bool _readerOpened = false;
 
     LONG _refCount;
     mutable std::mutex _lock;

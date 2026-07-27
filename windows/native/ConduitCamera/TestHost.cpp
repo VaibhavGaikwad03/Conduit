@@ -13,6 +13,7 @@
 #include <ksproxy.h>
 #include <cstdio>
 
+#include <initguid.h>  // Emits the CLSID storage for this exe (once).
 #include "Guids.h"
 
 #pragma comment(lib, "mfplat.lib")

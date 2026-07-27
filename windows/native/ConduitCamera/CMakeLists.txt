@@ -39,3 +39,12 @@ set_target_properties(ConduitCamera PROPERTIES
 add_executable(ConduitCameraTestHost TestHost.cpp)
 target_compile_definitions(ConduitCameraTestHost PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
 target_link_libraries(ConduitCameraTestHost PRIVATE mfsensorgroup mfplat mf mfuuid ole32 oleaut32)
+
+# Round-trip check of the shared-memory frame transport (no privileges needed).
+add_executable(ConduitCameraSelfTest SelfTest.cpp)
+target_compile_definitions(ConduitCameraSelfTest PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
+
+# Animated frame feeder for live-path testing before the phone stream exists.
+add_executable(ConduitCameraFeeder Feeder.cpp)
+target_compile_definitions(ConduitCameraFeeder PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
+target_link_libraries(ConduitCameraFeeder PRIVATE advapi32)

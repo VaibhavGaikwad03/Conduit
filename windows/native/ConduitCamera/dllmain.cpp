@@ -6,6 +6,7 @@
 #include <atomic>
 #include <string>
 
+#include <initguid.h>  // Emits the CLSID storage for the DLL (once).
 #include "Guids.h"
 #include "Module.h"
 #include "ClassFactory.h"

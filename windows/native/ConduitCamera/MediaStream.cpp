@@ -2,6 +2,7 @@
 #include "MediaSource.h"
 #include "VideoFormat.h"
 #include "Module.h"
+#include "Guids.h"
 #include <mferror.h>
 #include <new>
 
@@ -139,7 +140,7 @@ STDMETHODIMP ConduitMediaStream::RequestSample(IUnknown* token)
     if (_state != MF_STREAM_STATE_RUNNING) return MF_E_INVALIDREQUEST;
 
     IMFSample* sample = nullptr;
-    hr = CreateTestSample(&sample);
+    hr = CreateSample(&sample);
     if (FAILED(hr)) return hr;
 
     if (token) sample->SetUnknown(MFSampleExtension_Token, token);
@@ -197,15 +198,32 @@ HRESULT ConduitMediaStream::Shutdown()
     return S_OK;
 }
 
-// ---- Test-pattern sample ---------------------------------------------------
+// ---- Sample generation -----------------------------------------------------
 
-HRESULT ConduitMediaStream::CreateTestSample(IMFSample** outSample)
+// Sweeping bright bar on a dim background — the "no live feed" fallback.
+void ConduitMediaStream::FillTestPattern(BYTE* nv12)
 {
     const UINT32 w = CONDUIT_CAM_WIDTH;
     const UINT32 h = CONDUIT_CAM_HEIGHT;
-    const DWORD ySize = w * h;
-    const DWORD uvSize = w * h / 2;
-    const DWORD total = ySize + uvSize;
+    const UINT32 ySize = w * h;
+    const UINT32 barX = (_frameIndex * 12) % w;
+    for (UINT32 y = 0; y < h; ++y)
+    {
+        BYTE* row = nv12 + y * w;
+        for (UINT32 x = 0; x < w; ++x)
+        {
+            UINT32 dist = (x >= barX) ? (x - barX) : (barX - x);
+            row[x] = (dist < 40) ? 235 : 40;
+        }
+    }
+    memset(nv12 + ySize, 128, ySize / 2); // neutral chroma → grayscale
+}
+
+HRESULT ConduitMediaStream::CreateSample(IMFSample** outSample)
+{
+    const UINT32 w = CONDUIT_CAM_WIDTH;
+    const UINT32 h = CONDUIT_CAM_HEIGHT;
+    const DWORD total = w * h * 3 / 2;
 
     IMFMediaBuffer* buffer = nullptr;
     HRESULT hr = MFCreateMemoryBuffer(total, &buffer);
@@ -215,20 +233,18 @@ HRESULT ConduitMediaStream::CreateTestSample(IMFSample** outSample)
     hr = buffer->Lock(&data, nullptr, nullptr);
     if (SUCCEEDED(hr))
     {
-        // Y plane: a dark background with a bright vertical bar that sweeps across,
-        // so the preview visibly animates and confirms live frames are flowing.
-        const UINT32 barX = (_frameIndex * 12) % w;
-        for (UINT32 y = 0; y < h; ++y)
+        // Open the host's frame block lazily; serve its latest frame if a writer is
+        // live, otherwise fall back to the test pattern so the camera never stalls.
+        if (!_readerOpened)
         {
-            BYTE* row = data + y * w;
-            for (UINT32 x = 0; x < w; ++x)
-            {
-                UINT32 dist = (x >= barX) ? (x - barX) : (barX - x);
-                row[x] = (dist < 40) ? 235 : 40; // bright bar vs dim background
-            }
+            _reader.Open(CONDUIT_CAMERA_SHARED_NAME);
+            _readerOpened = true;
         }
-        // UV plane: neutral grey (128) → grayscale image.
-        memset(data + ySize, 128, uvSize);
+        if (!_reader.IsOpen()) _reader.Open(CONDUIT_CAMERA_SHARED_NAME);
+
+        if (!_reader.ReadLatest(data, total))
+            FillTestPattern(data);
+
         buffer->Unlock();
     }
     if (SUCCEEDED(hr)) hr = buffer->SetCurrentLength(total);
