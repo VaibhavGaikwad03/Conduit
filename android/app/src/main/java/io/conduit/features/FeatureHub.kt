@@ -21,6 +21,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     val status = DeviceStatusFeature(context, node)
     val remote = RemoteCommandFeature(context)
     val sms = SmsFeature(context, node)
+    val webcam = WebcamStreamer(context)
 
     fun start() {
         node.onPacket = { peer, packet -> handle(peer, packet) }
@@ -37,6 +38,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     fun stop() {
         battery.stop()
         clipboard.stop()
+        webcam.stop()
     }
 
     private fun handle(peer: DeviceInfo, packet: Packet) {
@@ -49,6 +51,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.NOTIFICATION_ACTION -> ConduitNotificationListener.instance?.handleAction(packet)
                 PacketType.SMS_SEND -> sms.send(packet.getString("address") ?: "", packet.getString("body") ?: "")
                 PacketType.SMS_LIST -> sms.sendThreadList()
+                PacketType.WEBCAM_START -> peer.ipAddress?.let { ip -> webcam.start(ip, packet.getInt("port", 5463)) }
+                PacketType.WEBCAM_STOP -> webcam.stop()
                 else -> log.d("Unhandled packet type ${packet.type}")
             }
         } catch (e: Exception) {

@@ -23,6 +23,8 @@ object PacketType {
     const val DEVICE_STATUS = "device-status"
     const val SMS_LIST = "sms-list"
     const val SMS_SEND = "sms-send"
+    const val WEBCAM_START = "webcam-start"
+    const val WEBCAM_STOP = "webcam-stop"
     const val DISCONNECT = "disconnect"
     const val ERROR = "error"
 }

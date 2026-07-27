@@ -17,6 +17,10 @@
     <!-- Device status (SSID needs location on Android 9+) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <!-- Using the phone camera as a PC webcam -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <!-- Saving received files to public Downloads (Android 9 and below only; 10+ uses MediaStore) -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
