@@ -1,5 +1,6 @@
 package io.conduit.runtime
 
+import io.conduit.features.FileFeature
 import io.conduit.model.DeviceInfo
 import io.conduit.network.ConduitNode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,8 +12,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 object ConduitRuntime {
     @Volatile var node: ConduitNode? = null
 
+    /** Set by the service; lets the UI start an outgoing (phone → PC) file transfer. */
+    @Volatile var files: FileFeature? = null
+
     val devices = MutableStateFlow<List<DeviceInfo>>(emptyList())
     val connectedCount = MutableStateFlow(0)
+    /** Ids of currently-connected peers — an observable source the UI can react to. */
+    val connectedIds = MutableStateFlow<Set<String>>(emptySet())
     val lastEvent = MutableStateFlow("")
 
     /** Active file transfers, shown with a progress bar in the UI. */
@@ -34,7 +40,9 @@ object ConduitRuntime {
     fun refreshDevices() {
         val n = node ?: return
         devices.value = n.knownDevices.sortedByDescending { it.lastSeen }
-        connectedCount.value = n.knownDevices.count { n.isConnected(it.deviceId) }
+        val connected = n.knownDevices.filter { n.isConnected(it.deviceId) }.map { it.deviceId }.toSet()
+        connectedIds.value = connected
+        connectedCount.value = connected.size
     }
 }
 

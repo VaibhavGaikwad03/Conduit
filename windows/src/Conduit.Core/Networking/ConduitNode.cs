@@ -38,6 +38,9 @@ public sealed class ConduitNode : IAsyncDisposable
     private readonly ConcurrentDictionary<string, PeerConnection> _peers = new();
     private readonly ConcurrentDictionary<string, DeviceInfo> _known = new();
 
+    // Devices the user manually disconnected: don't auto-reconnect until they reconnect.
+    private readonly ConcurrentDictionary<string, byte> _suppressReconnect = new();
+
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptTask;
@@ -137,13 +140,17 @@ public sealed class ConduitNode : IAsyncDisposable
             DevicesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // Auto-connect to paired peers that aren't connected yet.
-        if (device.IsPaired && !_peers.ContainsKey(device.DeviceId) && device.IpAddress is not null)
+        // Auto-connect to paired peers that aren't connected yet — unless the user
+        // manually disconnected this one.
+        if (device.IsPaired && !_peers.ContainsKey(device.DeviceId) && device.IpAddress is not null
+            && !_suppressReconnect.ContainsKey(device.DeviceId))
             _ = ConnectAsync(device);
     }
 
     public async Task ConnectAsync(DeviceInfo device)
     {
+        // An explicit connect clears any manual-disconnect suppression.
+        _suppressReconnect.TryRemove(device.DeviceId, out _);
         if (_peers.ContainsKey(device.DeviceId) || device.IpAddress is null) return;
         try
         {
@@ -164,6 +171,8 @@ public sealed class ConduitNode : IAsyncDisposable
     {
         conn.Handshaked += (_, peer) =>
         {
+            // A completed session means someone reconnected on purpose — allow auto-reconnect again.
+            _suppressReconnect.TryRemove(peer.DeviceId, out byte _);
             peer.IsPaired = _store.IsPaired(peer.DeviceId);
             _peers[peer.DeviceId] = conn;
             _known[peer.DeviceId] = peer;
@@ -195,6 +204,11 @@ public sealed class ConduitNode : IAsyncDisposable
                 return;
             case PacketType.PairResponse:
                 HandlePairResponse(peer, packet);
+                return;
+            case PacketType.Disconnect:
+                _log.Information("{Peer} disconnected", peer);
+                _suppressReconnect[peer.DeviceId] = 1;
+                _ = conn.DisposeAsync();
                 return;
             default:
                 PacketReceived?.Invoke(this, new PacketEventArgs(peer, packet));
@@ -271,6 +285,23 @@ public sealed class ConduitNode : IAsyncDisposable
     // ---- Sending --------------------------------------------------------------
 
     public bool IsConnected(string deviceId) => _peers.ContainsKey(deviceId);
+
+    /// <summary>
+    /// Drop the live session with a device and stop auto-reconnecting to it until the user
+    /// explicitly connects again (or the app restarts).
+    /// </summary>
+    public async Task DisconnectAsync(string deviceId)
+    {
+        _suppressReconnect[deviceId] = 1;
+        if (_peers.TryGetValue(deviceId, out var conn))
+        {
+            _log.Information("Disconnecting from {Id} (manual)", deviceId);
+            // Tell the peer so it also stops auto-reconnecting, then close.
+            try { await conn.SendAsync(Packet.Create(PacketType.Disconnect)).ConfigureAwait(false); }
+            catch (Exception ex) { _log.Debug(ex, "Could not send disconnect notice to {Id}", deviceId); }
+            await conn.DisposeAsync().ConfigureAwait(false);
+        }
+    }
 
     public async Task<bool> SendToAsync(string deviceId, Packet packet)
     {

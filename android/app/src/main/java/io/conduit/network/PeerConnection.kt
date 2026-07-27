@@ -116,6 +116,24 @@ class PeerConnection(
 
     val isHandshaked get() = cipher != null
 
+    /** Send one final packet (best-effort), flush it, then close — used for a graceful disconnect. */
+    fun closeWith(packet: Packet) {
+        val c = cipher ?: return close()
+        scope.launch {
+            try {
+                val frame = c.encrypt(packet.toJson().toByteArray())
+                writeLock.withLock {
+                    FrameCodec.writeFrame(output, frame)
+                    output.flush()
+                }
+            } catch (e: Exception) {
+                log.w(e, "Farewell send failed")
+            } finally {
+                close()
+            }
+        }
+    }
+
     fun close() {
         scope.cancel()
         runCatching { socket.close() }

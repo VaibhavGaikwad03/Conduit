@@ -81,9 +81,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public DeviceRow? Selected
     {
         get => _selected;
-        set { _selected = value; OnChanged(); OnChanged(nameof(HasSelection)); }
+        set { _selected = value; OnChanged(); OnChanged(nameof(HasSelection)); OnChanged(nameof(SelectedConnected)); OnChanged(nameof(SelectedOffline)); }
     }
     public bool HasSelection => _selected is not null;
+
+    /// <summary>True when a device is selected and it's currently connected — actions are only shown then.</summary>
+    public bool SelectedConnected => _selected?.Connected ?? false;
+
+    /// <summary>True when a device is selected but not connected — show a "connect first" hint.</summary>
+    public bool SelectedOffline => _selected is not null && !_selected.Connected;
+
+    private bool _drawerOpen;
+    public bool DrawerOpen { get => _drawerOpen; set => Set(ref _drawerOpen, value); }
 
     private string _selfName = "";
     public string SelfName { get => _selfName; set => Set(ref _selfName, value); }
@@ -196,6 +205,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? $"Connected to {string.Join(", ", connectedNames)}"
             : Devices.Count > 0 ? "Device found · not connected" : "Searching for devices…";
         OnChanged(nameof(HasDevices));
+
+        // Keep a device selected so the detail pane always reflects something useful:
+        // prefer the connected one, otherwise the first device.
+        if (_selected is null || Devices.All(d => d.DeviceId != _selected.DeviceId))
+            Selected = Devices.FirstOrDefault(d => d.Connected) ?? Devices.FirstOrDefault();
+
+        // The selected device's connection state may have just changed.
+        OnChanged(nameof(SelectedConnected));
+        OnChanged(nameof(SelectedOffline));
     }
 
     private void UpdateStatus()

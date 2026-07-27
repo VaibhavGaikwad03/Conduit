@@ -81,6 +81,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
 | `sms-send`            | win → android    | `{ address, body }` |
+| `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
 | `error`               | both             | `{ code, message }` |
 
 ## 5. Encryption

@@ -24,6 +24,7 @@ public static class PacketType
     public const string DeviceStatus = "device-status";
     public const string SmsList = "sms-list";
     public const string SmsSend = "sms-send";
+    public const string Disconnect = "disconnect";
     public const string Error = "error";
 }
 

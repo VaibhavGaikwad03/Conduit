@@ -48,6 +48,7 @@ class ConduitService : Service() {
         }
 
         ConduitRuntime.node = node
+        ConduitRuntime.files = hub.files
         node.start()
         hub.start()
 
@@ -67,6 +68,7 @@ class ConduitService : Service() {
         hub.stop()
         node.stop()
         ConduitRuntime.node = null
+        ConduitRuntime.files = null
         multicastLock?.let { if (it.isHeld) it.release() }
         log.i("Conduit service stopped")
         super.onDestroy()

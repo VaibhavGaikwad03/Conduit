@@ -2,21 +2,25 @@ package io.conduit.ui
 
 import android.Manifest
 import android.app.admin.DevicePolicyManager
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,16 +35,23 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
@@ -59,6 +71,8 @@ import io.conduit.R
 import io.conduit.features.ConduitDeviceAdminReceiver
 import io.conduit.logging.ConduitLog
 import io.conduit.model.DeviceInfo
+import io.conduit.protocol.Packet
+import io.conduit.protocol.PacketType
 import io.conduit.runtime.ConduitRuntime
 import io.conduit.runtime.TransferUi
 import io.conduit.service.ConduitService
@@ -117,6 +131,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Root of the app. A ☰ button opens a slide-out navigation drawer listing the devices;
+ * tapping a device fills the main area with that device's actions (send file, clipboard,
+ * pair/connect). The drawer also holds the phone-wide permission toggles.
+ */
 @Composable
 private fun ConduitScreen(
     onOpenNotificationAccess: () -> Unit,
@@ -126,11 +145,10 @@ private fun ConduitScreen(
     val connected by ConduitRuntime.connectedCount.collectAsState()
     val lastEvent by ConduitRuntime.lastEvent.collectAsState()
     val transfers by ConduitRuntime.transfers.collectAsState()
-    val scope = CoroutineScope(Dispatchers.Main)
-
-    // Whether notification access is granted — re-checked every time the app resumes
-    // (e.g. after the user toggles it in system settings).
+    val bgScope = CoroutineScope(Dispatchers.Main)
     val context = LocalContext.current
+
+    // Notification / device-admin state — re-checked every time the app resumes.
     val lifecycleOwner = LocalLifecycleOwner.current
     var notifGranted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
     var adminActive by remember { mutableStateOf(isDeviceAdminActive(context)) }
@@ -145,38 +163,334 @@ private fun ConduitScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Box(
+    // The drawer, and which device is currently shown in the main area.
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val uiScope = rememberCoroutineScope()
+    var openId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    val connectedIds by ConduitRuntime.connectedIds.collectAsState()
+    val openDevice = devices.firstOrNull { it.deviceId == openId }
+    val openConnected = openDevice != null && openDevice.deviceId in connectedIds
+
+    // Auto-pick a device the first time one connects, so the main area isn't empty.
+    LaunchedEffect(devices) {
+        if (openId == null) {
+            openId = devices.firstOrNull { ConduitRuntime.node?.isConnected(it.deviceId) == true }?.deviceId
+        }
+    }
+
+    // File picker: streams the chosen file to the open device.
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        val target = openId
+        if (uri != null && target != null) {
+            ConduitRuntime.files?.sendFile(target, uri)
+            ConduitRuntime.lastEvent.value = "Sending file to ${openDevice?.name ?: "your PC"}…"
+        }
+    }
+
+    fun sendClipboard(device: DeviceInfo) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val text = cm.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+        if (text.isBlank()) {
+            ConduitRuntime.lastEvent.value = "Clipboard is empty"
+            return
+        }
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.CLIPBOARD) { put("content", text); put("contentType", "text") },
+        ) ?: false
+        ConduitRuntime.lastEvent.value =
+            if (ok) "Clipboard sent to ${device.name}" else "Not connected to ${device.name}"
+    }
+
+    fun disconnect(device: DeviceInfo) {
+        ConduitRuntime.node?.disconnect(device.deviceId)
+        ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
+    }
+
+    fun pairOrConnect(device: DeviceInfo) {
+        bgScope.launch {
+            try {
+                val node = ConduitRuntime.node ?: return@launch
+                if (device.isPaired) {
+                    node.connect(device)
+                    ConduitRuntime.lastEvent.value = "Connecting to ${device.name}…"
+                } else {
+                    val code = node.startPairing(device)
+                    ConduitRuntime.lastEvent.value =
+                        "Pairing with ${device.name} — confirm code $code on your PC"
+                }
+            } catch (e: Exception) {
+                ConduitLog.tag("UI").w(e, "Action failed")
+            }
+        }
+    }
+
+    fun openDrawer() = uiScope.launch { drawerState.open() }
+    fun closeDrawer() = uiScope.launch { drawerState.close() }
+
+    // System back button: close the drawer, else leave settings.
+    BackHandler(enabled = drawerState.isOpen || showSettings) {
+        if (drawerState.isOpen) closeDrawer() else showSettings = false
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = NavyBg2) {
+                DrawerContent(
+                    selfName = ConduitRuntime.node?.self?.name,
+                    devices = devices,
+                    connectedIds = connectedIds,
+                    openId = openId,
+                    onOpenDevice = { openId = it.deviceId; showSettings = false; closeDrawer() },
+                    onOpenSettings = { showSettings = true; closeDrawer() },
+                )
+            }
+        },
+    ) {
+        if (showSettings) {
+            SettingsScreen(
+                notifGranted = notifGranted,
+                adminActive = adminActive,
+                onBack = { showSettings = false },
+                onOpenNotificationAccess = onOpenNotificationAccess,
+                onEnableDeviceAdmin = onEnableDeviceAdmin,
+            )
+        } else {
+            MainContent(
+                device = openDevice,
+                connected = connected > 0,
+                deviceConnected = openConnected,
+                lastEvent = lastEvent,
+                transfers = transfers,
+                onMenu = { openDrawer() },
+                onSendFile = { filePicker.launch("*/*") },
+                onSendClipboard = { openDevice?.let { sendClipboard(it) } },
+                onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
+                onDisconnect = { openDevice?.let { disconnect(it) } },
+            )
+        }
+    }
+}
+
+// ---- Drawer (the flyout) --------------------------------------------------------
+
+@Composable
+private fun DrawerContent(
+    selfName: String?,
+    devices: List<DeviceInfo>,
+    connectedIds: Set<String>,
+    openId: String?,
+    onOpenDevice: (DeviceInfo) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp),
+    ) {
+        // Header
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher_foreground),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Conduit", color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("This device · ${selfName ?: "starting…"}", color = TextMuted, fontSize = 11.sp)
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        SectionLabel("NEARBY DEVICES")
+        if (devices.isEmpty()) {
+            Text("Searching for devices…", color = TextMuted, fontSize = 13.sp)
+        } else {
+            devices.forEach { device ->
+                DeviceListRow(
+                    device,
+                    connected = device.deviceId in connectedIds,
+                    selected = device.deviceId == openId,
+                ) { onOpenDevice(device) }
+            }
+        }
+
+        Spacer(Modifier.height(22.dp))
+
+        SectionLabel("APP")
+        Card(
+            onClick = onOpenSettings,
+            colors = CardDefaults.cardColors(containerColor = Card),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("⚙", fontSize = 20.sp)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text("Settings", color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text("Notification mirroring, remote lock", color = TextMuted, fontSize = 11.sp)
+                }
+                Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    notifGranted: Boolean,
+    adminActive: Boolean,
+    onBack: () -> Unit,
+    onOpenNotificationAccess: () -> Unit,
+    onEnableDeviceAdmin: () -> Unit,
+) {
+    Column(
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(NavyBg2, NavyBg))),
     ) {
+        // Top bar with back arrow
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "‹",
+                color = Cyan, fontSize = 34.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable(onClick = onBack)
+                    .padding(horizontal = 10.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text("Settings", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(horizontal = 20.dp),
         ) {
-            // ---- Header ----
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Image(
-                    painter = painterResource(R.mipmap.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.size(44.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Conduit", color = TextHi, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "This device · ${ConduitRuntime.node?.self?.name ?: "starting…"}",
-                        color = TextMuted, fontSize = 12.sp,
-                    )
-                }
-                ConnectionChip(connected > 0, if (connected > 0) "Connected" else "Searching")
+            SectionLabel("THIS PHONE")
+            FeatureToggleCard(
+                title = "Notification mirroring",
+                enabledText = "Your phone's notifications appear on your PC.",
+                disabledText = "Show your phone's notifications on your PC. Requires notification access.",
+                enabledButton = "Manage access",
+                disabledButton = "Enable notification access",
+                granted = notifGranted,
+                onClick = onOpenNotificationAccess,
+            )
+            Spacer(Modifier.height(12.dp))
+            FeatureToggleCard(
+                title = "Remote lock",
+                enabledText = "Your PC can lock this phone's screen.",
+                disabledText = "Let your PC lock this phone. Requires device-admin permission.",
+                enabledButton = "Manage",
+                disabledButton = "Enable remote lock",
+                granted = adminActive,
+                onClick = onEnableDeviceAdmin,
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Conduit connects over your local Wi-Fi. Nothing leaves your network.",
+                color = TextMuted, fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceListRow(device: DeviceInfo, connected: Boolean, selected: Boolean, onClick: () -> Unit) {
+    val statusColor = when {
+        connected -> Success
+        device.isPaired -> Warn
+        else -> TextMuted
+    }
+    val statusText = when {
+        connected -> "Connected"
+        device.isPaired -> "Paired · offline"
+        else -> "Discovered · ${device.ipAddress ?: "?"}"
+    }
+    Card(
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = if (selected) CardHi else Card),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Text(device.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(statusText, color = TextMuted, fontSize = 11.sp)
             }
+        }
+    }
+}
 
-            Spacer(Modifier.height(18.dp))
+// ---- Main area ------------------------------------------------------------------
 
-            // ---- Pairing / event banner ----
+@Composable
+private fun MainContent(
+    device: DeviceInfo?,
+    connected: Boolean,
+    deviceConnected: Boolean,
+    lastEvent: String,
+    transfers: List<TransferUi>,
+    onMenu: () -> Unit,
+    onSendFile: () -> Unit,
+    onSendClipboard: () -> Unit,
+    onPairOrConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(NavyBg2, NavyBg))),
+    ) {
+        // ---- Top bar with the ☰ flyout button ----
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "☰",
+                color = TextHi, fontSize = 26.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(onClick = onMenu)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                device?.name ?: "Conduit",
+                color = TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            ConnectionChip(connected, if (connected) "Connected" else "Searching")
+        }
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+        ) {
+            // ---- Event banner ----
             if (lastEvent.isNotEmpty()) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = CardHi),
@@ -190,149 +504,203 @@ private fun ConduitScreen(
                 }
             }
 
-            // ---- File transfers (only while active) ----
+            if (device == null) {
+                DevicePickerHint()
+            } else {
+                DeviceDetail(
+                    device = device,
+                    connected = deviceConnected,
+                    onSendFile = onSendFile,
+                    onSendClipboard = onSendClipboard,
+                    onPairOrConnect = onPairOrConnect,
+                    onDisconnect = onDisconnect,
+                )
+            }
+
+            // ---- Active transfers ----
             if (transfers.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
                 SectionLabel("FILE TRANSFERS")
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Card),
                     shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Column(Modifier.padding(16.dp)) {
-                        transfers.forEach { t -> TransferItem(t) }
-                    }
-                }
-            }
-
-            // ---- Devices ----
-            SectionLabel("NEARBY DEVICES")
-            if (devices.isEmpty()) {
-                EmptyState()
-            } else {
-                devices.forEach { device ->
-                    DeviceCard(device) {
-                        scope.launch {
-                            try {
-                                val node = ConduitRuntime.node ?: return@launch
-                                if (device.isPaired) {
-                                    node.connect(device)
-                                    ConduitRuntime.lastEvent.value = "Connecting to ${device.name}…"
-                                } else {
-                                    val code = node.startPairing(device)
-                                    ConduitRuntime.lastEvent.value =
-                                        "Pairing with ${device.name} — confirm code $code on your PC"
-                                }
-                            } catch (e: Exception) {
-                                ConduitLog.tag("UI").w(e, "Action failed")
-                            }
-                        }
-                    }
+                    Column(Modifier.padding(16.dp)) { transfers.forEach { TransferItem(it) } }
                 }
             }
 
             Spacer(Modifier.height(20.dp))
+        }
+    }
+}
 
-            // ---- Notification mirroring ----
-            SectionLabel("FEATURES")
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Card),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Notification mirroring", color = TextHi,
-                            fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (notifGranted) {
-                            Box(Modifier.size(9.dp).clip(CircleShape).background(Success))
-                            Spacer(Modifier.width(6.dp))
-                            Text("On", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        }
-                    }
-
-                    if (notifGranted) {
-                        Text(
-                            "Your phone's notifications appear on your PC.",
-                            color = TextMuted, fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                        )
-                        OutlinedButton(
-                            onClick = onOpenNotificationAccess,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                        ) { Text("Manage access", color = TextHi, fontWeight = FontWeight.SemiBold) }
-                    } else {
-                        Text(
-                            "Show your phone's notifications on your PC. Requires notification access.",
-                            color = TextMuted, fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                        )
-                        Button(
-                            onClick = onOpenNotificationAccess,
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                        ) { Text("Enable notification access", fontWeight = FontWeight.SemiBold) }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ---- Remote lock (device admin) ----
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Card),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Remote lock", color = TextHi,
-                            fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (adminActive) {
-                            Box(Modifier.size(9.dp).clip(CircleShape).background(Success))
-                            Spacer(Modifier.width(6.dp))
-                            Text("On", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        }
-                    }
-                    if (adminActive) {
-                        Text(
-                            "Your PC can lock this phone's screen.",
-                            color = TextMuted, fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                        )
-                        OutlinedButton(
-                            onClick = onEnableDeviceAdmin,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                        ) { Text("Manage", color = TextHi, fontWeight = FontWeight.SemiBold) }
-                    } else {
-                        Text(
-                            "Let your PC lock this phone. Requires device-admin permission.",
-                            color = TextMuted, fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-                        )
-                        Button(
-                            onClick = onEnableDeviceAdmin,
-                            colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                        ) { Text("Enable remote lock", fontWeight = FontWeight.SemiBold) }
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
+@Composable
+private fun DevicePickerHint() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Pick a device", color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Text(
-                "Conduit connects over your local Wi-Fi. Nothing leaves your network.",
-                color = TextMuted, fontSize = 11.sp,
+                "Tap ☰ at the top-left to open the device list, then choose a device to send files and clipboard.",
+                color = TextMuted, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 6.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun DeviceDetail(
+    device: DeviceInfo,
+    connected: Boolean,
+    onSendFile: () -> Unit,
+    onSendClipboard: () -> Unit,
+    onPairOrConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val statusColor = when {
+        connected -> Success
+        device.isPaired -> Warn
+        else -> TextMuted
+    }
+    val statusText = when {
+        connected -> "Connected"
+        device.isPaired -> "Paired · offline"
+        else -> "Discovered · ${device.ipAddress ?: "?"}"
+    }
+
+    // Status line
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+        Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
+        Spacer(Modifier.width(8.dp))
+        Text(statusText, color = TextMuted, fontSize = 13.sp)
+    }
+
+    if (connected) {
+        SectionLabel("SEND TO THIS DEVICE")
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Card),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column {
+                ActionRow("📎", "Send file", "Pick a file to send to this device", onSendFile)
+                RowDivider()
+                ActionRow("📋", "Send clipboard", "Copy text here, then send it over", onSendClipboard)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onDisconnect,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+        ) { Text("Disconnect", color = Warn, fontWeight = FontWeight.SemiBold) }
+    } else {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Card),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    if (device.isPaired)
+                        "This device is paired but not connected right now. Connect to send files and clipboard."
+                    else
+                        "Pair with this device first. You'll confirm a 6-digit code on your PC.",
+                    color = TextMuted, fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 14.dp),
+                )
+                Button(
+                    onClick = onPairOrConnect,
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                ) {
+                    Text(if (device.isPaired) "Connect" else "Pair", fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionRow(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(icon, fontSize = 22.sp)
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text(title, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(subtitle, color = TextMuted, fontSize = 12.sp)
+        }
+        Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun RowDivider() {
+    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(1.dp).background(Stroke))
+}
+
+// ---- Shared pieces --------------------------------------------------------------
+
+@Composable
+private fun FeatureToggleCard(
+    title: String,
+    enabledText: String,
+    disabledText: String,
+    enabledButton: String,
+    disabledButton: String,
+    granted: Boolean,
+    onClick: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    title, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                if (granted) {
+                    Box(Modifier.size(9.dp).clip(CircleShape).background(Success))
+                    Spacer(Modifier.width(6.dp))
+                    Text("On", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+            Text(
+                if (granted) enabledText else disabledText,
+                color = TextMuted, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            )
+            if (granted) {
+                OutlinedButton(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                ) { Text(enabledButton, color = TextHi, fontWeight = FontWeight.SemiBold) }
+            } else {
+                Button(
+                    onClick = onClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                ) { Text(disabledButton, fontWeight = FontWeight.SemiBold) }
+            }
         }
     }
 }
@@ -353,7 +721,7 @@ private fun TransferItem(t: TransferUi) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 t.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
-                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(end = 8.dp),
             )
             Text(status, color = if (t.done) Success else TextMuted, fontSize = 12.sp)
@@ -396,70 +764,6 @@ private fun ConnectionChip(connected: Boolean, label: String) {
         )
         Spacer(Modifier.width(7.dp))
         Text(label, color = TextHi, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun DeviceCard(device: DeviceInfo, onAction: () -> Unit) {
-    val connected = ConduitRuntime.node?.isConnected(device.deviceId) == true
-    val statusColor = when {
-        connected -> Success
-        device.isPaired -> Warn
-        else -> TextMuted
-    }
-    val statusText = when {
-        connected -> "Connected"
-        device.isPaired -> "Paired · offline"
-        else -> "Discovered · ${device.ipAddress ?: "?"}"
-    }
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Card),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(11.dp).clip(CircleShape).background(statusColor))
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(device.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Text(statusText, color = TextMuted, fontSize = 12.sp)
-            }
-            if (connected) {
-                Text("Connected", color = Success, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            } else {
-                Button(
-                    onClick = onAction,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (device.isPaired) CardHi else Cyan,
-                        contentColor = if (device.isPaired) TextHi else NavyBg,
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                ) { Text(if (device.isPaired) "Connect" else "Pair", fontWeight = FontWeight.SemiBold) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyState() {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Card),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("Searching for devices…", color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-            Text(
-                "Open Conduit on your PC and make sure it's on the same Wi-Fi network.",
-                color = TextMuted, fontSize = 13.sp,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-        }
     }
 }
 

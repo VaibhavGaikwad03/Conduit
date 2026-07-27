@@ -44,6 +44,9 @@ class ConduitNode(private val store: AppStore) {
 
     private val peers = ConcurrentHashMap<String, PeerConnection>()
     private val known = ConcurrentHashMap<String, DeviceInfo>()
+
+    // Devices the user manually disconnected: don't auto-reconnect until they reconnect.
+    private val suppressReconnect = ConcurrentHashMap.newKeySet<String>()
     private val discovery = DeviceDiscovery(self, ::onBeacon)
     private var serverSocket: ServerSocket? = null
 
@@ -106,12 +109,16 @@ class ConduitNode(private val store: AppStore) {
             log.i("Discovered ${device.name}")
             onDevicesChanged?.invoke()
         }
-        if (store.isPaired(device.deviceId) && !peers.containsKey(device.deviceId) && device.ipAddress != null) {
+        if (store.isPaired(device.deviceId) && !peers.containsKey(device.deviceId) && device.ipAddress != null &&
+            !suppressReconnect.contains(device.deviceId)
+        ) {
             connect(device)
         }
     }
 
     fun connect(device: DeviceInfo) {
+        // An explicit connect clears any manual-disconnect suppression.
+        suppressReconnect.remove(device.deviceId)
         if (peers.containsKey(device.deviceId) || device.ipAddress == null) return
         scope.launch {
             try {
@@ -129,6 +136,8 @@ class ConduitNode(private val store: AppStore) {
 
     private fun wire(conn: PeerConnection) {
         conn.onHandshaked = { peer ->
+            // A completed session means someone reconnected on purpose — allow auto-reconnect again.
+            suppressReconnect.remove(peer.deviceId)
             peer.isPaired = store.isPaired(peer.deviceId)
             peers[peer.deviceId] = conn
             known[peer.deviceId] = peer
@@ -150,6 +159,14 @@ class ConduitNode(private val store: AppStore) {
         when (packet.type) {
             PacketType.PAIR_REQUEST -> handlePairRequest(conn, peer, packet)
             PacketType.PAIR_RESPONSE -> handlePairResponse(peer, packet)
+            PacketType.DISCONNECT -> {
+                log.i("${peer.name} disconnected")
+                suppressReconnect.add(peer.deviceId)
+                peers.remove(peer.deviceId)
+                onPeerDisconnected?.invoke(peer)
+                onDevicesChanged?.invoke()
+                conn.close()
+            }
             else -> onPacket?.invoke(peer, packet)
         }
     }
@@ -205,6 +222,24 @@ class ConduitNode(private val store: AppStore) {
     // ---- Sending --------------------------------------------------------------
 
     fun isConnected(deviceId: String) = peers.containsKey(deviceId)
+
+    /**
+     * Drop the live session with a device and stop auto-reconnecting to it until the user
+     * explicitly connects again (or the app restarts).
+     */
+    fun disconnect(deviceId: String) {
+        suppressReconnect.add(deviceId)
+        // Drop the peer from the connected set immediately so the UI flips to "offline"
+        // right away, then send the farewell + close the socket in the background.
+        val conn = peers.remove(deviceId)
+        if (conn != null) {
+            log.i("Disconnecting from $deviceId (manual)")
+            known[deviceId]?.let { onPeerDisconnected?.invoke(it) }
+            onDevicesChanged?.invoke()
+            // Tell the peer so it also stops auto-reconnecting, then close.
+            conn.closeWith(Packet.create(PacketType.DISCONNECT))
+        }
+    }
 
     fun sendTo(deviceId: String, packet: Packet): Boolean {
         val conn = peers[deviceId]

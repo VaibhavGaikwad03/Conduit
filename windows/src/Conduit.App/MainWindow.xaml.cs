@@ -61,15 +61,33 @@ public partial class MainWindow : Window
     private DeviceInfo? Find(string deviceId) =>
         _node.KnownDevices.FirstOrDefault(d => d.DeviceId == deviceId);
 
-    /// <summary>The device dashboard actions apply to: the first connected peer, else the selection.</summary>
+    /// <summary>
+    /// The device the detail pane's actions apply to: the selected device (what the user is
+    /// looking at), falling back to the first connected peer.
+    /// </summary>
     private DeviceInfo? TargetDevice()
     {
+        if (_vm.Selected is { } row && Find(row.DeviceId) is { } selected) return selected;
+
         var connected = _node.KnownDevices.FirstOrDefault(d => _node.IsConnected(d.DeviceId));
         if (connected is not null) return connected;
-        if (_vm.Selected is { } row) return Find(row.DeviceId);
 
-        MessageBox.Show("Connect a device first.", "Conduit");
+        MessageBox.Show("Select a device first.", "Conduit");
         return null;
+    }
+
+    // ---- Flyout drawer --------------------------------------------------------
+
+    private void OnToggleDrawer(object sender, RoutedEventArgs e) => _vm.DrawerOpen = !_vm.DrawerOpen;
+
+    private void OnCloseDrawer(object sender, RoutedEventArgs e) => _vm.DrawerOpen = false;
+
+    private void OnCloseDrawer(object sender, System.Windows.Input.MouseButtonEventArgs e) => _vm.DrawerOpen = false;
+
+    /// <summary>Picking a device from the drawer closes it, revealing that device's detail.</summary>
+    private void OnDeviceSelected(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_vm.Selected is not null) _vm.DrawerOpen = false;
     }
 
     // ---- Device row action (Pair or Connect) ----------------------------------
@@ -98,6 +116,13 @@ public partial class MainWindow : Window
             ConduitLog.For("UI").Warning(ex, "Device action failed");
             MessageBox.Show($"Could not complete the action: {ex.Message}", "Conduit");
         }
+    }
+
+    private async void OnDisconnect(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: DeviceRow row }) return;
+        if (Find(row.DeviceId) is not { } device) return;
+        await _node.DisconnectAsync(device.DeviceId);
     }
 
     // ---- Dashboard actions ----------------------------------------------------
