@@ -1,0 +1,150 @@
+using System.Diagnostics;
+using System.IO;
+using Conduit.Core.Logging;
+using Microsoft.Win32;
+using Serilog;
+
+namespace Conduit.App.Services;
+
+/// <summary>
+/// Drives the "phone as PC webcam" feature on the Windows side: installs and registers
+/// the native virtual-camera DLL (one-time, elevated), creates/tears down the camera,
+/// and pumps decoded NV12 frames into the shared block the camera reads from.
+///
+/// Frames come from <see cref="WriteFrame"/> (the H.264 decoder feeds these later); a
+/// built-in test pattern (<see cref="StartTestPattern"/>) exercises the path without a
+/// phone. The writer only opens once something actually consumes the camera, so the
+/// pump retries until then.
+/// </summary>
+public sealed class WebcamService : IDisposable
+{
+    private readonly ILogger _log = ConduitLog.For("Webcam");
+    private readonly SharedFrameWriter _writer = new();
+    private readonly object _gate = new();
+
+    private CancellationTokenSource? _testCts;
+    public bool IsRunning { get; private set; }
+
+    /// <summary>True once the DLL is registered under HKLM at the installed path.</summary>
+    public bool IsInstalled()
+    {
+        using var key = Registry.LocalMachine.OpenSubKey(
+            $@"SOFTWARE\Classes\CLSID\{WebcamPaths.SourceClsid}\InprocServer32");
+        var path = key?.GetValue(null) as string;
+        return path is not null &&
+               string.Equals(path, WebcamPaths.InstalledDll, StringComparison.OrdinalIgnoreCase) &&
+               File.Exists(path);
+    }
+
+    /// <summary>
+    /// Copies the DLL to its service-readable home and registers it (HKLM) — one elevated
+    /// step, so the user sees a single UAC prompt. Returns false if declined or missing.
+    /// </summary>
+    public bool EnsureInstalled()
+    {
+        if (IsInstalled()) return true;
+        if (!File.Exists(WebcamPaths.BundledDll))
+        {
+            _log.Error("Bundled ConduitCamera.dll not found at {Path}", WebcamPaths.BundledDll);
+            return false;
+        }
+
+        var dir = Path.GetDirectoryName(WebcamPaths.InstalledDll)!;
+        // A single elevated shell: make the folder, copy the DLL, register it.
+        var cmd = $"mkdir \"{dir}\" 2>nul & copy /Y \"{WebcamPaths.BundledDll}\" \"{WebcamPaths.InstalledDll}\" & " +
+                  $"regsvr32 /s \"{WebcamPaths.InstalledDll}\"";
+        try
+        {
+            var psi = new ProcessStartInfo("cmd.exe", $"/c {cmd}")
+            {
+                UseShellExecute = true,
+                Verb = "runas",           // triggers the UAC prompt
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            };
+            using var p = Process.Start(psi);
+            p!.WaitForExit();
+            var ok = IsInstalled();
+            if (!ok) _log.Warning("Install/registration did not complete");
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Elevated install was cancelled or failed");
+            return false;
+        }
+    }
+
+    /// <summary>Registers (if needed) and starts the virtual camera. Returns false on failure.</summary>
+    public bool Start()
+    {
+        lock (_gate)
+        {
+            if (IsRunning) return true;
+            if (!EnsureInstalled()) return false;
+
+            int hr = ConduitCameraNative.ConduitVCamStart();
+            if (hr < 0)
+            {
+                _log.Error("ConduitVCamStart failed: 0x{Hr:X8}", hr);
+                return false;
+            }
+            IsRunning = true;
+            _log.Information("Virtual camera started");
+            return true;
+        }
+    }
+
+    public void Stop()
+    {
+        lock (_gate)
+        {
+            StopTestPattern();
+            _writer.Dispose();
+            if (IsRunning)
+            {
+                ConduitCameraNative.ConduitVCamStop();
+                IsRunning = false;
+                _log.Information("Virtual camera stopped");
+            }
+        }
+    }
+
+    /// <summary>Feeds one decoded NV12 frame to the camera, opening the block on demand.</summary>
+    public void WriteFrame(byte[] nv12, ulong timestamp100ns)
+    {
+        if (!_writer.IsOpen && !_writer.TryOpen()) return; // no consumer yet
+        _writer.Write(nv12, timestamp100ns);
+    }
+
+    /// <summary>Pumps an animated test pattern so the camera can be verified without a phone.</summary>
+    public void StartTestPattern()
+    {
+        StopTestPattern();
+        var cts = new CancellationTokenSource();
+        _testCts = cts;
+        _ = Task.Run(async () =>
+        {
+            var frame = new byte[SharedFrameWriter.FrameBytes];
+            const int w = SharedFrameWriter.MaxWidth, h = SharedFrameWriter.MaxHeight, ySize = w * h;
+            for (uint f = 0; !cts.IsCancellationRequested; f++)
+            {
+                for (int y = 0; y < h; y++)
+                    for (int x = 0; x < w; x++)
+                        frame[y * w + x] = (byte)((x + y + f * 4) & 0xFF);
+                for (int i = ySize; i < frame.Length; i++) frame[i] = 128; // grayscale
+                WriteFrame(frame, (ulong)f * 333333);
+                try { await Task.Delay(33, cts.Token); } catch { break; }
+            }
+        }, cts.Token);
+    }
+
+    public void StopTestPattern()
+    {
+        _testCts?.Cancel();
+        _testCts?.Dispose();
+        _testCts = null;
+    }
+
+    public void Dispose() => Stop();
+}

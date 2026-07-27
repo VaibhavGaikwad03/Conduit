@@ -21,6 +21,7 @@ public partial class App : Application
     public AppStore Store => _store!;
     public FeatureCoordinator Coordinator { get; private set; } = null!;
     public NotificationService Notifications { get; private set; } = null!;
+    public WebcamService Webcam { get; private set; } = null!;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -57,6 +58,7 @@ public partial class App : Application
             };
 
             Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, Notifications);
+            Webcam = new WebcamService();
 
             _window = new MainWindow(_node, _store, Coordinator, clipboard, Notifications);
             _window.Show();
@@ -117,6 +119,7 @@ public partial class App : Application
 
     private async void ExitApp()
     {
+        Webcam?.Stop();
         if (_node is not null) await _node.DisposeAsync();
         _tray?.Dispose();
         ConduitLog.Shutdown();

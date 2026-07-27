@@ -24,6 +24,8 @@ public static class PacketType
     public const string DeviceStatus = "device-status";
     public const string SmsList = "sms-list";
     public const string SmsSend = "sms-send";
+    public const string WebcamStart = "webcam-start";
+    public const string WebcamStop = "webcam-stop";
     public const string Disconnect = "disconnect";
     public const string Error = "error";
 }

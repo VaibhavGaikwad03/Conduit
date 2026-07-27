@@ -21,4 +21,13 @@
     <Resource Include="Assets\conduit.ico" />
   </ItemGroup>
 
+  <!-- Bundle the native virtual-camera DLL next to the app when it has been built.
+       WebcamService installs it from here to a service-readable location. -->
+  <ItemGroup>
+    <None Include="..\..\native\ConduitCamera\build\Release\ConduitCamera.dll"
+          Condition="Exists('..\..\native\ConduitCamera\build\Release\ConduitCamera.dll')"
+          Link="ConduitCamera.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
