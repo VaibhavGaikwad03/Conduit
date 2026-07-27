@@ -83,6 +83,30 @@ public:
         return true;
     }
 
+    // Opens the block if it exists, otherwise creates it. The source calls this
+    // (running as LocalSystem in the Frame Server, so it holds the privilege needed
+    // to create a Global\ object), letting the non-elevated host merely open it.
+    bool OpenOrCreate(const wchar_t* name, SECURITY_ATTRIBUTES* sa)
+    {
+        if (Open(name)) return true;
+        const DWORD size = ConduitSharedSize();
+        _map = CreateFileMappingW(INVALID_HANDLE_VALUE, sa, PAGE_READWRITE, 0, size, name);
+        if (!_map) return false;
+        _view = static_cast<BYTE*>(MapViewOfFile(_map, FILE_MAP_ALL_ACCESS, 0, 0, size));
+        if (!_view) { CloseHandle(_map); _map = nullptr; return false; }
+        auto* h = reinterpret_cast<ConduitFrameHeader*>(_view);
+        if (h->magic != CONDUIT_FRAME_MAGIC)
+        {
+            ZeroMemory(_view, sizeof(ConduitFrameHeader));
+            h->magic = CONDUIT_FRAME_MAGIC;
+            h->version = CONDUIT_FRAME_VERSION;
+            h->maxWidth = CONDUIT_MAX_WIDTH;
+            h->maxHeight = CONDUIT_MAX_HEIGHT;
+        }
+        _hdr = h;
+        return true;
+    }
+
     bool IsOpen() const { return _view != nullptr; }
 
     // A live writer has published at least one frame.

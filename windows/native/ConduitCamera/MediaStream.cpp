@@ -4,7 +4,22 @@
 #include "Module.h"
 #include "Guids.h"
 #include <mferror.h>
+#include <sddl.h>
 #include <new>
+
+#pragma comment(lib, "advapi32.lib")
+
+// Opens the shared frame block, creating it (with a DACL that lets the non-elevated
+// host open it for writing) if it doesn't exist yet.
+static bool OpenSharedBlock(ConduitFrameReader& reader)
+{
+    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, FALSE };
+    ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        L"D:(A;;GA;;;WD)", SDDL_REVISION_1, &sa.lpSecurityDescriptor, nullptr);
+    bool ok = reader.OpenOrCreate(CONDUIT_CAMERA_SHARED_NAME, &sa);
+    if (sa.lpSecurityDescriptor) LocalFree(sa.lpSecurityDescriptor);
+    return ok;
+}
 
 ConduitMediaStream::ConduitMediaStream(ConduitMediaSource* source, IMFStreamDescriptor* sd)
     : _refCount(1), _source(source), _descriptor(sd)
@@ -237,10 +252,10 @@ HRESULT ConduitMediaStream::CreateSample(IMFSample** outSample)
         // live, otherwise fall back to the test pattern so the camera never stalls.
         if (!_readerOpened)
         {
-            _reader.Open(CONDUIT_CAMERA_SHARED_NAME);
+            OpenSharedBlock(_reader);
             _readerOpened = true;
         }
-        if (!_reader.IsOpen()) _reader.Open(CONDUIT_CAMERA_SHARED_NAME);
+        if (!_reader.IsOpen()) OpenSharedBlock(_reader);
 
         if (!_reader.ReadLatest(data, total))
             FillTestPattern(data);

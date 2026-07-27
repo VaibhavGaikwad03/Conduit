@@ -12,6 +12,7 @@ add_library(ConduitCamera SHARED
     MediaSource.cpp
     SourceActivate.cpp
     MediaStream.cpp
+    Control.cpp
 )
 
 target_compile_definitions(ConduitCamera PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
