@@ -12,6 +12,21 @@ class ConduitFrameWriter
 public:
     ~ConduitFrameWriter() { Close(); }
 
+    // Opens an existing block for writing (used by the in-process decoder feed — the
+    // block itself is created by the source in the Frame Server). No privilege needed.
+    bool Open(const wchar_t* name)
+    {
+        _map = OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, FALSE, name);
+        if (!_map) return false;
+        _view = static_cast<BYTE*>(MapViewOfFile(_map, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, ConduitSharedSize()));
+        if (!_view) { CloseHandle(_map); _map = nullptr; return false; }
+        _hdr = reinterpret_cast<ConduitFrameHeader*>(_view);
+        _hdr->writerAlive = 1;
+        return true;
+    }
+
+    bool IsOpen() const { return _view != nullptr; }
+
     bool Create(const wchar_t* name, SECURITY_ATTRIBUTES* sa = nullptr)
     {
         const DWORD size = ConduitSharedSize();

@@ -6,3 +6,6 @@ EXPORTS
     DllUnregisterServer PRIVATE
     ConduitVCamStart
     ConduitVCamStop
+    ConduitFeedStart
+    ConduitFeedFrame
+    ConduitFeedStop

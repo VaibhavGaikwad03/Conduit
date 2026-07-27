@@ -32,4 +32,16 @@ internal static class ConduitCameraNative
     /// <summary>Stops and removes the virtual camera. Returns an HRESULT.</summary>
     [DllImport(Dll, PreserveSig = true)]
     public static extern int ConduitVCamStop();
+
+    /// <summary>Initializes the H.264 decoder pipeline. Returns an HRESULT.</summary>
+    [DllImport(Dll, PreserveSig = true)]
+    public static extern int ConduitFeedStart();
+
+    /// <summary>Decodes one Annex-B H.264 access unit and publishes the NV12 frame.</summary>
+    [DllImport(Dll, PreserveSig = true)]
+    public static extern int ConduitFeedFrame(byte[] data, int len, ulong timestamp100ns);
+
+    /// <summary>Tears down the decoder pipeline. Returns an HRESULT.</summary>
+    [DllImport(Dll, PreserveSig = true)]
+    public static extern int ConduitFeedStop();
 }

@@ -23,6 +23,8 @@ public sealed class WebcamService : IDisposable
     private readonly object _gate = new();
 
     private CancellationTokenSource? _testCts;
+    private VideoStreamReceiver? _receiver;
+    private uint _frameCounter;
     public bool IsRunning { get; private set; }
 
     /// <summary>True once the DLL is registered under HKLM at the installed path.</summary>
@@ -89,10 +91,31 @@ public sealed class WebcamService : IDisposable
                 _log.Error("ConduitVCamStart failed: 0x{Hr:X8}", hr);
                 return false;
             }
+
+            // Bring up the H.264 decoder and start receiving the phone's video stream;
+            // each decoded frame is published straight into the shared block by native code.
+            hr = ConduitCameraNative.ConduitFeedStart();
+            if (hr < 0)
+            {
+                _log.Error("ConduitFeedStart failed: 0x{Hr:X8}", hr);
+                ConduitCameraNative.ConduitVCamStop();
+                return false;
+            }
+            _frameCounter = 0;
+            _receiver = new VideoStreamReceiver(OnEncodedFrame);
+            _receiver.Start();
+
             IsRunning = true;
             _log.Information("Virtual camera started");
             return true;
         }
+    }
+
+    private void OnEncodedFrame(byte[] h264)
+    {
+        // Assign a monotonic 30 fps timestamp; the decoder publishes the NV12 result.
+        ulong ts = _frameCounter++ * 333333UL;
+        ConduitCameraNative.ConduitFeedFrame(h264, h264.Length, ts);
     }
 
     public void Stop()
@@ -100,9 +123,12 @@ public sealed class WebcamService : IDisposable
         lock (_gate)
         {
             StopTestPattern();
+            _receiver?.Stop();
+            _receiver = null;
             _writer.Dispose();
             if (IsRunning)
             {
+                ConduitCameraNative.ConduitFeedStop();
                 ConduitCameraNative.ConduitVCamStop();
                 IsRunning = false;
                 _log.Information("Virtual camera stopped");
