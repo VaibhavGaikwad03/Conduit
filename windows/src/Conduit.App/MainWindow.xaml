@@ -187,6 +187,18 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Webcam -->
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
+                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="WEBCAM" Style="{StaticResource Section}"/>
+                            <TextBlock Text="Use the phone's camera as a webcam ('Conduit Camera') in any app."
+                                       Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <Button x:Name="WebcamButton" Style="{StaticResource PrimaryButton}"
+                                    Content="🎥  Use phone as webcam" Click="OnToggleWebcam"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Recent notifications -->
                     <Border Style="{StaticResource CardBorder}">
                         <StackPanel>

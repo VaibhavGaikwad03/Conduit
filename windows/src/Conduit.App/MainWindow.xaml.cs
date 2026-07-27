@@ -180,6 +180,32 @@ public partial class MainWindow : Window
     {
         if (TargetDevice() is { } d) await _coordinator.SendMediaCommandAsync(d.DeviceId, "next");
     }
+
+    private async void OnToggleWebcam(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        var webcam = App.Instance.Webcam;
+
+        if (!webcam.IsRunning)
+        {
+            // Starts (and, first time, installs+registers) the virtual camera — may prompt for UAC.
+            if (!webcam.Start())
+            {
+                MessageBox.Show(
+                    "Couldn't start the virtual camera. The one-time setup needs administrator approval.",
+                    "Conduit");
+                return;
+            }
+            await _coordinator.SendWebcamStartAsync(d.DeviceId, VideoStreamReceiver.Port);
+            WebcamButton.Content = "🛑  Stop webcam";
+        }
+        else
+        {
+            await _coordinator.SendWebcamStopAsync(d.DeviceId);
+            webcam.Stop();
+            WebcamButton.Content = "🎥  Use phone as webcam";
+        }
+    }
 }
 
 internal static class NativeMethods

@@ -138,6 +138,13 @@ public sealed class FeatureCoordinator
     public Task SendRemoteCommandAsync(string deviceId, string command) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.RemoteCommand, b => b["command"] = command));
 
+    /// <summary>Tells the phone to start streaming its camera to this PC's video port.</summary>
+    public Task SendWebcamStartAsync(string deviceId, int port) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStart, b => b["port"] = port));
+
+    public Task SendWebcamStopAsync(string deviceId) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStop));
+
     public Task SendSmsAsync(string deviceId, string address, string body) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.SmsSend, b =>
         {
