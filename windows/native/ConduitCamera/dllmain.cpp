@@ -46,7 +46,10 @@ STDAPI DllCanUnloadNow()
     return ModuleLockCount() == 0 ? S_OK : S_FALSE;
 }
 
-// ---- Self-registration (HKCU, per-user, no admin) --------------------------
+// ---- Self-registration -----------------------------------------------------
+// Registers under HKLM so the Windows Camera Frame Server (which runs as
+// LocalService / LocalSystem) can find and load the source. Writing HKLM
+// requires an elevated regsvr32; this is the feature's one-time admin step.
 
 static std::wstring GuidToString(REFGUID guid)
 {
@@ -76,13 +79,13 @@ STDAPI DllRegisterServer()
     const std::wstring clsid = GuidToString(CLSID_ConduitCameraSource);
     const std::wstring base = L"Software\\Classes\\CLSID\\" + clsid;
 
-    LONG rc = SetKeyValue(HKEY_CURRENT_USER, base, nullptr, CONDUIT_CAMERA_FRIENDLY_NAME);
+    LONG rc = SetKeyValue(HKEY_LOCAL_MACHINE, base, nullptr, CONDUIT_CAMERA_FRIENDLY_NAME);
     if (rc != ERROR_SUCCESS) return HRESULT_FROM_WIN32(rc);
 
-    rc = SetKeyValue(HKEY_CURRENT_USER, base + L"\\InprocServer32", nullptr, path);
+    rc = SetKeyValue(HKEY_LOCAL_MACHINE, base + L"\\InprocServer32", nullptr, path);
     if (rc != ERROR_SUCCESS) return HRESULT_FROM_WIN32(rc);
 
-    rc = SetKeyValue(HKEY_CURRENT_USER, base + L"\\InprocServer32", L"ThreadingModel", L"Both");
+    rc = SetKeyValue(HKEY_LOCAL_MACHINE, base + L"\\InprocServer32", L"ThreadingModel", L"Both");
     if (rc != ERROR_SUCCESS) return HRESULT_FROM_WIN32(rc);
 
     return S_OK;
@@ -92,6 +95,6 @@ STDAPI DllUnregisterServer()
 {
     const std::wstring clsid = GuidToString(CLSID_ConduitCameraSource);
     const std::wstring base = L"Software\\Classes\\CLSID\\" + clsid;
-    RegDeleteTreeW(HKEY_CURRENT_USER, base.c_str());
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, base.c_str());
     return S_OK;
 }

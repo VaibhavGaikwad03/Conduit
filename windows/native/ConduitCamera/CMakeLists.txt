@@ -10,6 +10,8 @@ add_library(ConduitCamera SHARED
     dllmain.cpp
     ClassFactory.cpp
     MediaSource.cpp
+    SourceActivate.cpp
+    MediaStream.cpp
 )
 
 target_compile_definitions(ConduitCamera PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
@@ -31,3 +33,9 @@ set_target_properties(ConduitCamera PROPERTIES
     LINK_FLAGS "/DEF:\"${CMAKE_CURRENT_SOURCE_DIR}/ConduitCamera.def\""
     OUTPUT_NAME "ConduitCamera"
 )
+
+# Small manual test harness: registers/creates the virtual camera and holds it open
+# so "Conduit Camera" can be verified in the Windows Camera app. Not shipped.
+add_executable(ConduitCameraTestHost TestHost.cpp)
+target_compile_definitions(ConduitCameraTestHost PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
+target_link_libraries(ConduitCameraTestHost PRIVATE mfsensorgroup mfplat mf mfuuid ole32 oleaut32)
