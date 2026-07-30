@@ -32,6 +32,9 @@ Conduit/
 | Media / remote control      | both ways        |   ✅    |   ✅    |
 | Battery & device status     | Android → Windows|   ✅    |   ✅    |
 | SMS list / send             | both ways        |   ✅    |   ✅    |
+| Cross-device file search    | both ways        |   ✅    |   ✅    |
+| Open link on other device   | both ways        |   ✅    |   ✅    |
+| Phone as PC webcam          | Android → Windows|   ✅    |   ✅    |
 
 ## How the connection works (seamless by design)
 
