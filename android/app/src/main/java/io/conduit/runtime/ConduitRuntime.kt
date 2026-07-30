@@ -24,6 +24,24 @@ object ConduitRuntime {
     /** Active file transfers, shown with a progress bar in the UI. */
     val transfers = MutableStateFlow<List<TransferUi>>(emptyList())
 
+    /** Results from the last cross-device file search (the peer's matching files). */
+    val searchResults = MutableStateFlow<List<SearchResultUi>>(emptyList())
+    val searchTruncated = MutableStateFlow(false)
+    /** True while a search request is outstanding, so the UI can show a spinner/hint. */
+    val searchPending = MutableStateFlow(false)
+
+    fun setSearchResults(list: List<SearchResultUi>, truncated: Boolean) {
+        searchResults.value = list
+        searchTruncated.value = truncated
+        searchPending.value = false
+    }
+
+    fun beginSearch() {
+        searchResults.value = emptyList()
+        searchTruncated.value = false
+        searchPending.value = true
+    }
+
     @Synchronized
     fun upsertTransfer(t: TransferUi) {
         val list = transfers.value.toMutableList()
@@ -45,6 +63,16 @@ object ConduitRuntime {
         connectedCount.value = connected.size
     }
 }
+
+/** One file found on the connected peer, shown in the search results list. */
+data class SearchResultUi(
+    val id: String,
+    val name: String,
+    val size: Long,
+    val folder: String,
+    val mime: String,
+    val deviceId: String,
+)
 
 /** One file transfer's progress, for the UI. */
 data class TransferUi(

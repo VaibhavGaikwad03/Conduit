@@ -15,6 +15,9 @@ public static class PacketType
     public const string FileOffer = "file-offer";
     public const string FileChunk = "file-chunk";
     public const string FileComplete = "file-complete";
+    public const string FileSearch = "file-search";
+    public const string FileSearchResult = "file-search-result";
+    public const string FileRequest = "file-request";
     public const string Notification = "notification";
     public const string NotificationAction = "notification-action";
     public const string MediaState = "media-state";

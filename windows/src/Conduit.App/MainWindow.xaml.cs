@@ -143,6 +143,31 @@ public partial class MainWindow : Window
             await _coordinator.SendFileAsync(device.DeviceId, dlg.FileName);
     }
 
+    private void OnSearchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) OnSearchFiles(sender, e);
+    }
+
+    private async void OnSearchFiles(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        string query = SearchBox.Text?.Trim() ?? "";
+        if (query.Length < 2)
+        {
+            MessageBox.Show("Type at least 2 characters to search.", "Conduit");
+            return;
+        }
+        _vm.BeginSearch();
+        await _coordinator.SendFileSearchAsync(d.DeviceId, query);
+    }
+
+    private async void OnDownloadResult(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SearchResultRow row }) return;
+        if (TargetDevice() is not { } d) return;
+        await _coordinator.SendFileRequestAsync(d.DeviceId, row.Id);
+    }
+
     private async void OnLockPhone(object sender, RoutedEventArgs e)
     {
         if (TargetDevice() is { } d) await _coordinator.SendRemoteCommandAsync(d.DeviceId, "lock");

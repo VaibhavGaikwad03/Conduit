@@ -5,8 +5,10 @@ import android.app.admin.DevicePolicyManager
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -42,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -75,11 +78,13 @@ import io.conduit.model.DeviceInfo
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
 import io.conduit.runtime.ConduitRuntime
+import io.conduit.runtime.SearchResultUi
 import io.conduit.runtime.TransferUi
 import io.conduit.service.ConduitService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
 
@@ -109,6 +114,16 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         startActivity(intent)
+                    },
+                    onOpenAllFilesAccess = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                            )
+                        }
                     },
                 )
             }
@@ -142,6 +157,7 @@ class MainActivity : ComponentActivity() {
 private fun ConduitScreen(
     onOpenNotificationAccess: () -> Unit,
     onEnableDeviceAdmin: () -> Unit,
+    onOpenAllFilesAccess: () -> Unit,
 ) {
     val devices by ConduitRuntime.devices.collectAsState()
     val connected by ConduitRuntime.connectedCount.collectAsState()
@@ -154,11 +170,13 @@ private fun ConduitScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     var notifGranted by remember { mutableStateOf(isNotificationAccessGranted(context)) }
     var adminActive by remember { mutableStateOf(isDeviceAdminActive(context)) }
+    var allFilesGranted by remember { mutableStateOf(isAllFilesAccessGranted()) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 notifGranted = isNotificationAccessGranted(context)
                 adminActive = isDeviceAdminActive(context)
+                allFilesGranted = isAllFilesAccessGranted()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -221,6 +239,32 @@ private fun ConduitScreen(
         ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
     }
 
+    fun searchFiles(device: DeviceInfo, query: String) {
+        val q = query.trim()
+        if (q.length < 2) {
+            ConduitRuntime.lastEvent.value = "Type at least 2 characters to search"
+            return
+        }
+        ConduitRuntime.beginSearch()
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.FILE_SEARCH) {
+                put("requestId", UUID.randomUUID().toString().replace("-", ""))
+                put("query", q)
+            },
+        ) ?: false
+        if (!ok) ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
+    }
+
+    fun downloadResult(result: SearchResultUi) {
+        val ok = ConduitRuntime.node?.sendTo(
+            result.deviceId,
+            Packet.create(PacketType.FILE_REQUEST) { put("id", result.id) },
+        ) ?: false
+        ConduitRuntime.lastEvent.value =
+            if (ok) "Requesting ${result.name}…" else "Not connected"
+    }
+
     fun pairOrConnect(device: DeviceInfo) {
         bgScope.launch {
             try {
@@ -266,9 +310,11 @@ private fun ConduitScreen(
             SettingsScreen(
                 notifGranted = notifGranted,
                 adminActive = adminActive,
+                allFilesGranted = allFilesGranted,
                 onBack = { showSettings = false },
                 onOpenNotificationAccess = onOpenNotificationAccess,
                 onEnableDeviceAdmin = onEnableDeviceAdmin,
+                onOpenAllFilesAccess = onOpenAllFilesAccess,
             )
         } else {
             MainContent(
@@ -281,6 +327,8 @@ private fun ConduitScreen(
                 onSendFile = { filePicker.launch("*/*") },
                 onSendClipboard = { openDevice?.let { sendClipboard(it) } },
                 onMediaCommand = { cmd, value -> openDevice?.let { sendMediaCommand(it, cmd, value) } },
+                onSearch = { query -> openDevice?.let { searchFiles(it, query) } },
+                onDownload = { result -> downloadResult(result) },
                 onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
                 onDisconnect = { openDevice?.let { disconnect(it) } },
             )
@@ -362,9 +410,11 @@ private fun DrawerContent(
 private fun SettingsScreen(
     notifGranted: Boolean,
     adminActive: Boolean,
+    allFilesGranted: Boolean,
     onBack: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
     onEnableDeviceAdmin: () -> Unit,
+    onOpenAllFilesAccess: () -> Unit,
 ) {
     Column(
         Modifier
@@ -413,6 +463,17 @@ private fun SettingsScreen(
                 disabledButton = "Enable remote lock",
                 granted = adminActive,
                 onClick = onEnableDeviceAdmin,
+            )
+            Spacer(Modifier.height(12.dp))
+            FeatureToggleCard(
+                title = "All-file search",
+                enabledText = "Your PC can search every file on this phone, including APKs, docs and zips.",
+                disabledText = "Without this, PC search only finds photos, videos, audio and Downloads. " +
+                    "Enable 'All files access' to search every file.",
+                enabledButton = "Manage access",
+                disabledButton = "Enable all-file search",
+                granted = allFilesGranted,
+                onClick = onOpenAllFilesAccess,
             )
             Spacer(Modifier.height(20.dp))
             Text(
@@ -468,6 +529,8 @@ private fun MainContent(
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
     onMediaCommand: (String, Double?) -> Unit,
+    onSearch: (String) -> Unit,
+    onDownload: (SearchResultUi) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -528,6 +591,8 @@ private fun MainContent(
                     onSendFile = onSendFile,
                     onSendClipboard = onSendClipboard,
                     onMediaCommand = onMediaCommand,
+                    onSearch = onSearch,
+                    onDownload = onDownload,
                     onPairOrConnect = onPairOrConnect,
                     onDisconnect = onDisconnect,
                 )
@@ -579,6 +644,8 @@ private fun DeviceDetail(
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
     onMediaCommand: (String, Double?) -> Unit,
+    onSearch: (String) -> Unit,
+    onDownload: (SearchResultUi) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -613,6 +680,9 @@ private fun DeviceDetail(
                 ActionRow("📋", "Send clipboard", "Copy text here, then send it over", onSendClipboard)
             }
         }
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("SEARCH FILES ON PC")
+        FileSearchCard(onSearch, onDownload)
         Spacer(Modifier.height(20.dp))
         SectionLabel("CONTROL PC MEDIA")
         MediaRemoteCard(onMediaCommand)
@@ -676,6 +746,92 @@ private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Search the connected peer's files by name and download any match. Results stream in from
+ * ConduitRuntime after the peer replies; tapping ⬇ pulls the file via the normal transfer path.
+ */
+@Composable
+private fun FileSearchCard(onSearch: (String) -> Unit, onDownload: (SearchResultUi) -> Unit) {
+    val results by ConduitRuntime.searchResults.collectAsState()
+    val pending by ConduitRuntime.searchPending.collectAsState()
+    val truncated by ConduitRuntime.searchTruncated.collectAsState()
+    var query by rememberSaveable { mutableStateOf("") }
+    var searched by rememberSaveable { mutableStateOf(false) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("File name", color = TextMuted) },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = { searched = true; onSearch(query) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(52.dp),
+                ) { Text("Search", fontWeight = FontWeight.SemiBold) }
+            }
+
+            when {
+                pending -> StatusLine("Searching…")
+                searched && results.isEmpty() -> StatusLine("No matching files")
+                results.isNotEmpty() -> {
+                    Spacer(Modifier.height(6.dp))
+                    StatusLine("${results.size} result${if (results.size == 1) "" else "s"}" +
+                        if (truncated) " · showing first 100" else "")
+                    results.forEach { SearchResultItem(it, onDownload) }
+                }
+                else -> StatusLine("Search this device's Downloads, Documents and media by name.")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusLine(text: String) {
+    Text(text, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+}
+
+@Composable
+private fun SearchResultItem(r: SearchResultUi, onDownload: (SearchResultUi) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(
+                r.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            val detail = if (r.folder.isBlank()) formatSize(r.size) else "${r.folder} · ${formatSize(r.size)}"
+            Text(detail, color = TextMuted, fontSize = 11.sp)
+        }
+        OutlinedButton(
+            onClick = { onDownload(r) },
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.height(40.dp),
+        ) { Text("⬇  Get", color = TextHi, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    var size = bytes.toDouble()
+    var i = 0
+    while (size >= 1024 && i < units.size - 1) { size /= 1024; i++ }
+    return if (i == 0) "${bytes} B" else String.format("%.1f %s", size, units[i])
 }
 
 @Composable
@@ -836,6 +992,10 @@ private fun ConnectionChip(connected: Boolean, label: String) {
 /** True when the user has granted Conduit notification access (the listener is enabled). */
 private fun isNotificationAccessGranted(context: Context): Boolean =
     NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+/** True when Conduit holds "All files access" (so file search can see every file, not just media). */
+private fun isAllFilesAccessGranted(): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
 
 /** True when Conduit is an active Device Admin (so the PC can lock the phone). */
 private fun isDeviceAdminActive(context: Context): Boolean {

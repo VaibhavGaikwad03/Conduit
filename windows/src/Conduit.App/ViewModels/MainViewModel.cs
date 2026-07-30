@@ -66,6 +66,14 @@ public sealed class TransferRow : INotifyPropertyChanged
     }
 }
 
+/// <summary>One file found on the peer, shown in the search results list.</summary>
+public sealed class SearchResultRow
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Detail { get; init; }   // "Folder · 1.2 MB"
+}
+
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ConduitNode _node;
@@ -74,8 +82,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<DeviceRow> Devices { get; } = new();
     public ObservableCollection<MirroredNotification> Notifications { get; } = new();
     public ObservableCollection<TransferRow> Transfers { get; } = new();
+    public ObservableCollection<SearchResultRow> SearchResults { get; } = new();
     public bool HasNotifications => Notifications.Count > 0;
     public bool HasTransfers => Transfers.Count > 0;
+    public bool HasSearchResults => SearchResults.Count > 0;
+
+    private string _searchStatus = "";
+    public string SearchStatus { get => _searchStatus; set => Set(ref _searchStatus, value); }
 
     private DeviceRow? _selected;
     public DeviceRow? Selected
@@ -136,6 +149,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _node.PeerDisconnected += (_, _) => Dispatch(RefreshDevices);
         _coordinator.StatusChanged += (_, _) => Dispatch(UpdateStatus);
         _coordinator.FileProgress += (_, p) => Dispatch(() => OnFileProgress(p));
+        _coordinator.SearchResults += (_, r) => Dispatch(() => OnSearchResults(r));
         notifications.NotificationsChanged += (_, _) => Dispatch(() => RefreshNotifications(notifications));
 
         RefreshDevices();
@@ -172,6 +186,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 OnChanged(nameof(HasTransfers));
             }));
         }
+    }
+
+    /// <summary>Clears the results and shows a searching state; called when a search is fired.</summary>
+    public void BeginSearch()
+    {
+        SearchResults.Clear();
+        OnChanged(nameof(HasSearchResults));
+        SearchStatus = "Searching…";
+    }
+
+    private void OnSearchResults(FileSearchResultsEventArgs r)
+    {
+        SearchResults.Clear();
+        foreach (var it in r.Results)
+        {
+            var detail = string.IsNullOrEmpty(it.Folder) ? FormatSize(it.Size) : $"{it.Folder} · {FormatSize(it.Size)}";
+            SearchResults.Add(new SearchResultRow { Id = it.Id, Name = it.Name, Detail = detail });
+        }
+        SearchStatus = r.Results.Count == 0
+            ? "No matches"
+            : $"{r.Results.Count} result{(r.Results.Count == 1 ? "" : "s")}{(r.Truncated ? " (showing first 100)" : "")}";
+        OnChanged(nameof(HasSearchResults));
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB", "TB" };
+        double size = bytes;
+        int i = 0;
+        while (size >= 1024 && i < units.Length - 1) { size /= 1024; i++; }
+        return $"{size:0.#} {units[i]}";
     }
 
     private void RefreshNotifications(NotificationService svc)

@@ -239,6 +239,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
     // ---- Helpers --------------------------------------------------------------
 
     private fun queryName(uri: Uri): String {
+        if (uri.scheme == "file") return uri.lastPathSegment ?: "conduit-file"
         context.contentResolver.query(uri, null, null, null, null)?.use { c ->
             val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (idx >= 0 && c.moveToFirst()) return c.getString(idx)
@@ -247,6 +248,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
     }
 
     private fun querySize(uri: Uri): Long {
+        if (uri.scheme == "file") return uri.path?.let { File(it).length() } ?: 0
         context.contentResolver.query(uri, null, null, null, null)?.use { c ->
             val idx = c.getColumnIndex(OpenableColumns.SIZE)
             if (idx >= 0 && c.moveToFirst()) return c.getLong(idx)

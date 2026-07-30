@@ -72,6 +72,9 @@ Every decrypted payload is a JSON object with this envelope:
 | `file-offer`          | both             | `{ transferId, name, size, mime }` |
 | `file-chunk`          | both             | `{ transferId, seq, dataB64 }` |
 | `file-complete`       | both             | `{ transferId, ok, sha256 }` |
+| `file-search`         | both             | `{ requestId, query }` — ask the peer to search its files by filename substring |
+| `file-search-result`  | both             | `{ requestId, truncated, results: [{ id, name, size, folder, mime }] }` — reply to `file-search` |
+| `file-request`        | both             | `{ id }` — ask the peer to send a file it returned in a `file-search-result` (streamed via `file-offer`/`file-chunk`/`file-complete`) |
 | `notification`        | android → win    | `{ key, appName, title, text, iconB64?, canReply, actions:[] }` |
 | `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
 | `media-state`         | both             | `{ playing, title, artist, app, position, duration, volume }` |
@@ -83,6 +86,12 @@ Every decrypted payload is a JSON object with this envelope:
 | `sms-send`            | win → android    | `{ address, body }` |
 | `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
 | `error`               | both             | `{ code, message }` |
+
+**File search** is peer-directed: a `file-search` makes the *other* device search its own files
+(the phone via MediaStore — Downloads/Documents/media; Windows across the user folders). Each
+result `id` is an **opaque random token** the responder maps to a local path/URI and remembers
+briefly; a `file-request` is honored only for a token from a recent result, so a peer can never
+pull an arbitrary path. Downloads reuse the normal `file-offer`/`file-chunk`/`file-complete` flow.
 
 ## 5. Encryption
 

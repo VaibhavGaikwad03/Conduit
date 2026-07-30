@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Conduit.Core.Logging;
 using Conduit.Core.Networking;
 using Conduit.Core.Protocol;
@@ -18,6 +19,7 @@ public sealed class FeatureCoordinator
     private readonly MediaService _media;
     private readonly PowerService _power;
     private readonly FileTransferService _files;
+    private readonly FileSearchService _search;
     private readonly NotificationService _notifications;
 
     /// <summary>Latest phone status for the dashboard.</summary>
@@ -27,12 +29,16 @@ public sealed class FeatureCoordinator
     /// <summary>Forwards live file-transfer progress to the UI.</summary>
     public event EventHandler<TransferProgress>? FileProgress;
 
+    /// <summary>Results the peer returned for one of our file searches.</summary>
+    public event EventHandler<FileSearchResultsEventArgs>? SearchResults;
+
     public FeatureCoordinator(
         ConduitNode node,
         ClipboardService clipboard,
         MediaService media,
         PowerService power,
         FileTransferService files,
+        FileSearchService search,
         NotificationService notifications)
     {
         _node = node;
@@ -40,6 +46,7 @@ public sealed class FeatureCoordinator
         _media = media;
         _power = power;
         _files = files;
+        _search = search;
         _notifications = notifications;
 
         _node.PacketReceived += OnPacket;
@@ -82,6 +89,22 @@ public sealed class FeatureCoordinator
                 case PacketType.FileComplete:
                     _files.HandlePacket(packet);
                     break;
+
+                case PacketType.FileSearch:
+                    HandleFileSearch(e.Peer.DeviceId, packet);
+                    break;
+
+                case PacketType.FileSearchResult:
+                    HandleFileSearchResult(e.Peer.DeviceId, packet);
+                    break;
+
+                case PacketType.FileRequest:
+                {
+                    var path = _search.Resolve(packet.GetString("id") ?? "");
+                    if (path is not null) _ = _files.SendFileAsync(e.Peer.DeviceId, path);
+                    else _log.Warning("file-request for unknown id ignored");
+                    break;
+                }
 
                 case PacketType.Notification:
                     _notifications.Show(packet);
@@ -151,6 +174,77 @@ public sealed class FeatureCoordinator
             b["address"] = address;
             b["body"] = body;
         }));
+
+    /// <summary>Asks the peer to search its files; results arrive via <see cref="SearchResults"/>.</summary>
+    public Task SendFileSearchAsync(string deviceId, string query) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.FileSearch, b =>
+        {
+            b["requestId"] = Guid.NewGuid().ToString("N");
+            b["query"] = query;
+        }));
+
+    /// <summary>Asks the peer to send a file it returned in a search result.</summary>
+    public Task SendFileRequestAsync(string deviceId, string id) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.FileRequest, b => b["id"] = id));
+
+    // ---- File-search packet handling ------------------------------------------
+
+    private void HandleFileSearch(string fromDeviceId, Packet packet)
+    {
+        var (results, truncated) = _search.Search(packet.GetString("query") ?? "");
+        _ = _node.SendToAsync(fromDeviceId, Packet.Create(PacketType.FileSearchResult, b =>
+        {
+            b["requestId"] = packet.GetString("requestId") ?? "";
+            b["truncated"] = truncated;
+            var arr = new JsonArray();
+            foreach (var r in results)
+                arr.Add(new JsonObject
+                {
+                    ["id"] = r.Id,
+                    ["name"] = r.Name,
+                    ["size"] = r.Size,
+                    ["folder"] = r.Folder,
+                    ["mime"] = r.Mime,
+                });
+            b["results"] = arr;
+        }));
+    }
+
+    private void HandleFileSearchResult(string fromDeviceId, Packet packet)
+    {
+        var list = new List<FileSearchService.Result>();
+        if (packet.Body["results"] is JsonArray arr)
+        {
+            foreach (var node in arr)
+            {
+                if (node is not JsonObject o) continue;
+                try
+                {
+                    list.Add(new FileSearchService.Result(
+                        o["id"]?.GetValue<string>() ?? "",
+                        o["name"]?.GetValue<string>() ?? "",
+                        o["size"]?.GetValue<long>() ?? 0,
+                        o["folder"]?.GetValue<string>() ?? "",
+                        o["mime"]?.GetValue<string>() ?? ""));
+                }
+                catch { /* skip a malformed row */ }
+            }
+        }
+        SearchResults?.Invoke(this, new FileSearchResultsEventArgs
+        {
+            DeviceId = fromDeviceId,
+            Results = list,
+            Truncated = packet.GetBool("truncated"),
+        });
+    }
+}
+
+/// <summary>Search results the peer returned, raised for the UI.</summary>
+public sealed class FileSearchResultsEventArgs : EventArgs
+{
+    public required string DeviceId { get; init; }
+    public required IReadOnlyList<FileSearchService.Result> Results { get; init; }
+    public bool Truncated { get; init; }
 }
 
 public sealed class PhoneStatus

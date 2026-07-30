@@ -28,6 +28,12 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!-- Optional 'All files access': lets cross-device search find non-media files (APKs, docs,
+         zips) that scoped MediaStore can't see. Granted by the user in Settings, per Settings toggle. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
     <!-- Messaging -->
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />

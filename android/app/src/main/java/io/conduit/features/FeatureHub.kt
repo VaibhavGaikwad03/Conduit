@@ -6,6 +6,10 @@ import io.conduit.model.DeviceInfo
 import io.conduit.network.ConduitNode
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
+import io.conduit.runtime.ConduitRuntime
+import io.conduit.runtime.SearchResultUi
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Routes every incoming packet to the right Android feature and exposes helpers the
@@ -22,6 +26,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     val remote = RemoteCommandFeature(context)
     val sms = SmsFeature(context, node)
     val webcam = WebcamStreamer(context)
+    val fileSearch = FileSearchFeature(context)
 
     fun start() {
         node.onPacket = { peer, packet -> handle(peer, packet) }
@@ -53,11 +58,57 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.SMS_LIST -> sms.sendThreadList()
                 PacketType.WEBCAM_START -> peer.ipAddress?.let { ip -> webcam.start(ip, packet.getInt("port", 5463)) }
                 PacketType.WEBCAM_STOP -> webcam.stop()
+                PacketType.FILE_SEARCH -> handleFileSearch(peer, packet)
+                PacketType.FILE_SEARCH_RESULT -> handleFileSearchResult(peer, packet)
+                PacketType.FILE_REQUEST -> {
+                    val uri = fileSearch.resolve(packet.getString("id") ?: "")
+                    if (uri != null) files.sendFile(peer.deviceId, uri)
+                    else log.w("file-request for unknown id ignored")
+                }
                 else -> log.d("Unhandled packet type ${packet.type}")
             }
         } catch (e: Exception) {
             log.e(e, "Error handling ${packet.type} from ${peer.name}")
         }
+    }
+
+    /** Peer asked us to search our files: run it and reply with the matches. */
+    private fun handleFileSearch(peer: DeviceInfo, packet: Packet) {
+        val (results, truncated) = fileSearch.search(packet.getString("query") ?: "")
+        node.sendTo(peer.deviceId, Packet.create(PacketType.FILE_SEARCH_RESULT) {
+            put("requestId", packet.getString("requestId") ?: "")
+            put("truncated", truncated)
+            put("results", JSONArray().apply {
+                results.forEach { r ->
+                    put(JSONObject().apply {
+                        put("id", r.id); put("name", r.name); put("size", r.size)
+                        put("folder", r.folder); put("mime", r.mime)
+                    })
+                }
+            })
+        })
+    }
+
+    /** Peer replied to our search: surface the matches to the UI. */
+    private fun handleFileSearchResult(peer: DeviceInfo, packet: Packet) {
+        val arr = packet.body.optJSONArray("results")
+        val list = mutableListOf<SearchResultUi>()
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                list.add(
+                    SearchResultUi(
+                        id = o.optString("id"),
+                        name = o.optString("name"),
+                        size = o.optLong("size"),
+                        folder = o.optString("folder"),
+                        mime = o.optString("mime"),
+                        deviceId = peer.deviceId,
+                    ),
+                )
+            }
+        }
+        ConduitRuntime.setSearchResults(list, packet.getBool("truncated"))
     }
 
     /** Push current battery + device status to all peers (called on connect). */

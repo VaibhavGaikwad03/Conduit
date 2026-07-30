@@ -56,8 +56,9 @@ public partial class App : Application
                 _tray.BalloonTipText = path;
                 _tray.ShowBalloonTip(4000);
             };
+            var fileSearch = new FileSearchService();
 
-            Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, Notifications);
+            Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, fileSearch, Notifications);
             Webcam = new WebcamService();
 
             _window = new MainWindow(_node, _store, Coordinator, clipboard, Notifications);
