@@ -149,15 +149,40 @@ STDMETHODIMP ConduitMediaStream::GetStreamDescriptor(IMFStreamDescriptor** sd)
 
 STDMETHODIMP ConduitMediaStream::RequestSample(IUnknown* token)
 {
-    std::lock_guard<std::mutex> guard(_lock);
-    HRESULT hr = CheckShutdown();
-    if (FAILED(hr)) return hr;
-    if (_state != MF_STREAM_STATE_RUNNING) return MF_E_INVALIDREQUEST;
+    // Validate under the lock, then pace and build the sample WITHOUT holding it (the wait
+    // must not block GetEvent/SetStreamState).
+    {
+        std::lock_guard<std::mutex> guard(_lock);
+        HRESULT hr = CheckShutdown();
+        if (FAILED(hr)) return hr;
+        if (_state != MF_STREAM_STATE_RUNNING) return MF_E_INVALIDREQUEST;
+    }
+
+    // Pace to the target frame rate and timestamp against a real-time base. Without this the
+    // source answers every RequestSample instantly with a clock-detached timestamp, flooding
+    // the pipeline (thousands of fps) so the renderer can never schedule a frame — a black
+    // preview despite valid pixels.
+    LONGLONG now = MFGetSystemTime();
+    if (_startTime == 0) _startTime = now;
+    LONGLONG target = _startTime + static_cast<LONGLONG>(_frameIndex) * _frameDuration;
+    LONGLONG waitMs = (target - now) / 10000; // 100-ns units -> ms
+    if (waitMs > 0)
+    {
+        if (waitMs > 1000) waitMs = 1000; // clamp so a stall can't wedge us
+        Sleep(static_cast<DWORD>(waitMs));
+    }
+    // Frame-server capture sources must timestamp in the absolute system-clock (QPC) domain,
+    // not relative to start — otherwise the server treats every frame as long past and drops
+    // it (black preview). Pacing above still bounds the rate to ~30 fps.
+    LONGLONG sampleTime = MFGetSystemTime();
 
     IMFSample* sample = nullptr;
-    hr = CreateSample(&sample);
+    HRESULT hr = CreateSample(&sample, sampleTime);
     if (FAILED(hr)) return hr;
 
+    std::lock_guard<std::mutex> guard(_lock);
+    hr = CheckShutdown();
+    if (FAILED(hr)) { sample->Release(); return hr; }
     if (token) sample->SetUnknown(MFSampleExtension_Token, token);
     hr = _eventQueue->QueueEventParamUnk(MEMediaSample, GUID_NULL, S_OK, sample);
     sample->Release();
@@ -193,6 +218,7 @@ HRESULT ConduitMediaStream::Start()
     HRESULT hr = CheckShutdown();
     if (FAILED(hr)) return hr;
     _state = MF_STREAM_STATE_RUNNING;
+    _startTime = 0; // rebase pacing/timestamps to this run
     return _eventQueue->QueueEventParamVar(MEStreamStarted, GUID_NULL, S_OK, nullptr);
 }
 
@@ -234,7 +260,7 @@ void ConduitMediaStream::FillTestPattern(BYTE* nv12)
     memset(nv12 + ySize, 128, ySize / 2); // neutral chroma → grayscale
 }
 
-HRESULT ConduitMediaStream::CreateSample(IMFSample** outSample)
+HRESULT ConduitMediaStream::CreateSample(IMFSample** outSample, LONGLONG sampleTime)
 {
     const UINT32 w = CONDUIT_CAM_WIDTH;
     const UINT32 h = CONDUIT_CAM_HEIGHT;
@@ -267,12 +293,11 @@ HRESULT ConduitMediaStream::CreateSample(IMFSample** outSample)
     IMFSample* sample = nullptr;
     if (SUCCEEDED(hr)) hr = MFCreateSample(&sample);
     if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer);
-    if (SUCCEEDED(hr)) hr = sample->SetSampleTime(_nextTime);
+    if (SUCCEEDED(hr)) hr = sample->SetSampleTime(sampleTime);
     if (SUCCEEDED(hr)) hr = sample->SetSampleDuration(_frameDuration);
 
     if (SUCCEEDED(hr))
     {
-        _nextTime += _frameDuration;
         _frameIndex++;
         *outSample = sample;
         sample->AddRef();

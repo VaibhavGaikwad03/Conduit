@@ -45,7 +45,7 @@ private:
     ~ConduitMediaStream();
     HRESULT Init();
     HRESULT CheckShutdown() const;
-    HRESULT CreateSample(IMFSample** sample);
+    HRESULT CreateSample(IMFSample** sample, LONGLONG sampleTime);
     void FillTestPattern(BYTE* nv12);
 
     ConduitFrameReader _reader;      // Live frames from the host, when present.
@@ -60,7 +60,7 @@ private:
     IMFStreamDescriptor* _descriptor = nullptr;
     IMFMediaEventQueue* _eventQueue = nullptr;
 
-    LONGLONG _nextTime = 0;   // 100-ns sample time, monotonically increasing.
+    LONGLONG _startTime = 0;  // real-time base (100-ns, from MFGetSystemTime); 0 until first sample.
     LONGLONG _frameDuration = 333333; // 30 fps.
     DWORD _frameIndex = 0;
 };

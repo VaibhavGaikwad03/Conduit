@@ -57,7 +57,30 @@ class ConduitService : Service() {
         } else {
             startForeground(NOTIF_ID, buildNotification())
         }
+        instance = this
         log.i("Conduit service started")
+    }
+
+    /**
+     * Adds/removes the camera foreground-service type on the running service. Android 14+ blocks
+     * camera access from a plain dataSync foreground service (openCamera fails with
+     * ERROR_CAMERA_DISABLED / "camera error 3"), so the webcam feature promotes the service to
+     * include the camera type only while it is actively streaming, then drops it again. The base
+     * service still starts as dataSync so it never needs the camera permission just to run.
+     */
+    fun setCameraActive(active: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val type = if (active) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        }
+        try {
+            startForeground(NOTIF_ID, buildNotification(), type)
+            log.i("Foreground camera type ${if (active) "enabled" else "disabled"}")
+        } catch (e: Exception) {
+            log.e(e, "Could not update foreground service type for camera")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
@@ -65,6 +88,7 @@ class ConduitService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        instance = null
         hub.stop()
         node.stop()
         ConduitRuntime.node = null
@@ -112,6 +136,11 @@ class ConduitService : Service() {
     companion object {
         private const val CHANNEL_ID = "conduit_service"
         private const val NOTIF_ID = 1001
+
+        /** The running service, so features (e.g. the webcam) can adjust its foreground type. */
+        @Volatile
+        var instance: ConduitService? = null
+            private set
 
         fun start(context: Context) {
             val intent = Intent(context, ConduitService::class.java)

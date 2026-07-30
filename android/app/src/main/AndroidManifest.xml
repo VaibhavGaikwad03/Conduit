@@ -11,6 +11,8 @@
     <!-- Foreground service that keeps the connection alive -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Needed so the service can access the camera while streaming it to the PC (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -58,7 +60,7 @@
         <service
             android:name=".service.ConduitService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|camera" />
 
         <!-- Stops the "find my phone" ring from its notification action -->
         <receiver

@@ -15,6 +15,7 @@ import android.os.HandlerThread
 import android.view.Surface
 import androidx.core.content.ContextCompat
 import io.conduit.logging.ConduitLog
+import io.conduit.service.ConduitService
 import java.io.DataOutputStream
 import java.net.Socket
 import kotlin.concurrent.thread
@@ -56,6 +57,10 @@ class WebcamStreamer(private val context: Context) {
             return
         }
         try {
+            // Android 14+ blocks camera access from a plain dataSync foreground service, so add the
+            // camera type to the running service before opening the camera (removed again in stop()).
+            ConduitService.instance?.setCameraActive(true)
+
             socket = Socket(host, port).apply { tcpNoDelay = true }
             out = DataOutputStream(socket!!.getOutputStream())
 
@@ -179,6 +184,7 @@ class WebcamStreamer(private val context: Context) {
         cameraThread?.quitSafely()
         session = null; camera = null; encoder = null; inputSurface = null
         out = null; socket = null; cameraThread = null; cameraHandler = null
+        ConduitService.instance?.setCameraActive(false)
         log.i("Webcam streaming stopped")
     }
 }
