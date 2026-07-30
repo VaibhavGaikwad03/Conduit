@@ -148,6 +148,20 @@ public partial class MainWindow : Window
         if (e.Key == System.Windows.Input.Key.Enter) OnSearchFiles(sender, e);
     }
 
+    private void OnLinkKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter) OnOpenLink(sender, e);
+    }
+
+    private async void OnOpenLink(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        string url = LinkBox.Text?.Trim() ?? "";
+        if (url.Length == 0) { MessageBox.Show("Enter a link to open.", "Conduit"); return; }
+        await _coordinator.SendOpenLinkAsync(d.DeviceId, url);
+        LinkBox.Clear();
+    }
+
     private async void OnSearchFiles(object sender, RoutedEventArgs e)
     {
         if (TargetDevice() is not { } d) return;

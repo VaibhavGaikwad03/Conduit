@@ -17,6 +17,7 @@ object PacketType {
     const val FILE_SEARCH = "file-search"
     const val FILE_SEARCH_RESULT = "file-search-result"
     const val FILE_REQUEST = "file-request"
+    const val OPEN_LINK = "open-link"
     const val NOTIFICATION = "notification"
     const val NOTIFICATION_ACTION = "notification-action"
     const val MEDIA_STATE = "media-state"

@@ -1,6 +1,8 @@
 package io.conduit.features
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import io.conduit.logging.ConduitLog
 import io.conduit.model.DeviceInfo
 import io.conduit.network.ConduitNode
@@ -65,10 +67,35 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                     if (uri != null) files.sendFile(peer.deviceId, uri)
                     else log.w("file-request for unknown id ignored")
                 }
+                PacketType.OPEN_LINK -> openLink(packet.getString("url") ?: "")
                 else -> log.d("Unhandled packet type ${packet.type}")
             }
         } catch (e: Exception) {
             log.e(e, "Error handling ${packet.type} from ${peer.name}")
+        }
+    }
+
+    /** Open a peer-supplied URL in the browser (http/https only). */
+    private fun openLink(rawUrl: String) {
+        val url = normalizeUrl(rawUrl) ?: run { log.w("Ignoring non-http open-link: $rawUrl"); return }
+        try {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            log.i("Opened link $url")
+        } catch (e: Exception) {
+            log.w(e, "Failed to open link")
+        }
+    }
+
+    /** Trims, adds https:// when no scheme, and only allows http/https. Null if invalid. */
+    private fun normalizeUrl(raw: String): String? {
+        val s = raw.trim()
+        if (s.isEmpty()) return null
+        val withScheme = if (!s.contains("://")) "https://$s" else s
+        return when (Uri.parse(withScheme).scheme?.lowercase()) {
+            "http", "https" -> withScheme
+            else -> null
         }
     }
 

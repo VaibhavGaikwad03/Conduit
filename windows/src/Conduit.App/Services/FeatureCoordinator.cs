@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Conduit.Core.Logging;
 using Conduit.Core.Networking;
@@ -106,6 +107,10 @@ public sealed class FeatureCoordinator
                     break;
                 }
 
+                case PacketType.OpenLink:
+                    OpenLink(packet.GetString("url") ?? "");
+                    break;
+
                 case PacketType.Notification:
                     _notifications.Show(packet);
                     break;
@@ -186,6 +191,38 @@ public sealed class FeatureCoordinator
     /// <summary>Asks the peer to send a file it returned in a search result.</summary>
     public Task SendFileRequestAsync(string deviceId, string id) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.FileRequest, b => b["id"] = id));
+
+    /// <summary>Asks the peer to open a URL in its browser.</summary>
+    public Task SendOpenLinkAsync(string deviceId, string url) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.OpenLink, b => b["url"] = url));
+
+    /// <summary>Opens a peer-supplied URL in the default browser (http/https only).</summary>
+    private void OpenLink(string rawUrl)
+    {
+        var url = NormalizeUrl(rawUrl);
+        if (url is null) { _log.Warning("Ignoring non-http open-link request"); return; }
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            _log.Information("Opened link {Url}", url);
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to open link");
+        }
+    }
+
+    /// <summary>Trims, adds https:// if no scheme, and only allows http/https. Null if invalid.</summary>
+    private static string? NormalizeUrl(string raw)
+    {
+        raw = (raw ?? "").Trim();
+        if (raw.Length == 0) return null;
+        if (!raw.Contains("://")) raw = "https://" + raw;
+        return Uri.TryCreate(raw, UriKind.Absolute, out var uri) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? uri.ToString()
+            : null;
+    }
 
     // ---- File-search packet handling ------------------------------------------
 

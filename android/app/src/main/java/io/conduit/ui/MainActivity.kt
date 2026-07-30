@@ -265,6 +265,17 @@ private fun ConduitScreen(
             if (ok) "Requesting ${result.name}…" else "Not connected"
     }
 
+    fun openLinkOnPc(device: DeviceInfo, url: String) {
+        val u = url.trim()
+        if (u.isEmpty()) return
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.OPEN_LINK) { put("url", u) },
+        ) ?: false
+        ConduitRuntime.lastEvent.value =
+            if (ok) "Opening link on ${device.name}…" else "Not connected to ${device.name}"
+    }
+
     fun pairOrConnect(device: DeviceInfo) {
         bgScope.launch {
             try {
@@ -329,6 +340,7 @@ private fun ConduitScreen(
                 onMediaCommand = { cmd, value -> openDevice?.let { sendMediaCommand(it, cmd, value) } },
                 onSearch = { query -> openDevice?.let { searchFiles(it, query) } },
                 onDownload = { result -> downloadResult(result) },
+                onOpenLink = { url -> openDevice?.let { openLinkOnPc(it, url) } },
                 onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
                 onDisconnect = { openDevice?.let { disconnect(it) } },
             )
@@ -531,6 +543,7 @@ private fun MainContent(
     onMediaCommand: (String, Double?) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
+    onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -593,6 +606,7 @@ private fun MainContent(
                     onMediaCommand = onMediaCommand,
                     onSearch = onSearch,
                     onDownload = onDownload,
+                    onOpenLink = onOpenLink,
                     onPairOrConnect = onPairOrConnect,
                     onDisconnect = onDisconnect,
                 )
@@ -646,6 +660,7 @@ private fun DeviceDetail(
     onMediaCommand: (String, Double?) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
+    onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -680,6 +695,9 @@ private fun DeviceDetail(
                 ActionRow("📋", "Send clipboard", "Copy text here, then send it over", onSendClipboard)
             }
         }
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("OPEN LINK ON PC")
+        OpenLinkCard(onOpenLink)
         Spacer(Modifier.height(20.dp))
         SectionLabel("SEARCH FILES ON PC")
         FileSearchCard(onSearch, onDownload)
@@ -744,6 +762,37 @@ private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
                 MediaButton("🔇", Modifier.weight(1f)) { onCommand("mute", null) }
                 MediaButton("🔊", Modifier.weight(1f)) { onCommand("volume", 0.6) }
             }
+        }
+    }
+}
+
+/** Send a URL to open in the PC's default browser. */
+@Composable
+private fun OpenLinkCard(onOpenLink: (String) -> Unit) {
+    var url by rememberSaveable { mutableStateOf("") }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                singleLine = true,
+                placeholder = { Text("https://…", color = TextMuted) },
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(10.dp))
+            Button(
+                onClick = { onOpenLink(url); url = "" },
+                colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.height(52.dp),
+            ) { Text("Open", fontWeight = FontWeight.SemiBold) }
         }
     }
 }
