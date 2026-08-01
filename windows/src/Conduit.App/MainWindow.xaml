@@ -310,11 +310,22 @@
                                                                FontSize="10" Opacity="0.7" Margin="0,3,0,0"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Click="OnDismissNotification"
-                                                        Style="{StaticResource GhostButton}" Width="30" Height="30"
-                                                        VerticalAlignment="Top" Margin="8,0,0,0"
-                                                        ToolTip="Remove this one from the PC list">
+                                                        Width="28" Height="28" VerticalAlignment="Top" Margin="8,0,0,0"
+                                                        Cursor="Hand" ToolTip="Remove this one from the PC list">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="bg" Background="Transparent" CornerRadius="6">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
                                                     <Path Data="M0,0 L1,1 M1,0 L0,1" Stretch="Uniform"
-                                                          Width="11" Height="11" Stroke="#FF6B6B" StrokeThickness="1.6"
+                                                          Width="11" Height="11" Stroke="#FF6B6B" StrokeThickness="1.7"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                                                 </Button>
                                             </Grid>
