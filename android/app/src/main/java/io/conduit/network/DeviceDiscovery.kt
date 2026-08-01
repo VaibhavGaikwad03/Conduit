@@ -16,6 +16,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 
 /**
  * UDP presence layer: broadcasts this device's identity beacon on port 5461 every 3s and
@@ -60,13 +61,36 @@ class DeviceDiscovery(
                 put("protocol", Ports.PROTOCOL_VERSION)
             }
             val data = beacon.toString().toByteArray()
-            val packet = DatagramPacket(
-                data, data.size, InetAddress.getByName("255.255.255.255"), Ports.UDP,
-            )
-            sock.send(packet)
+            // Send to every active interface's directed broadcast (e.g. 192.168.43.255) so the
+            // beacon reaches hotspot/tether subnets, which the limited 255.255.255.255 broadcast
+            // often does not. Keep the limited broadcast too as a fallback. See PROTOCOL.md §1.
+            for (target in broadcastTargets()) {
+                try {
+                    sock.send(DatagramPacket(data, data.size, target, Ports.UDP))
+                } catch (e: Exception) {
+                    log.v(e, "Beacon send failed for $target")
+                }
+            }
         } catch (e: Exception) {
             log.w(e, "Failed to send beacon")
         }
+    }
+
+    /** Directed broadcast address of each active IPv4 interface, plus the limited broadcast. */
+    private fun broadcastTargets(): List<InetAddress> {
+        val targets = LinkedHashSet<InetAddress>()
+        try {
+            for (nif in NetworkInterface.getNetworkInterfaces()) {
+                if (!nif.isUp || nif.isLoopback) continue
+                for (addr in nif.interfaceAddresses) {
+                    addr.broadcast?.let { targets.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            log.v(e, "Could not enumerate interfaces for broadcast")
+        }
+        targets.add(InetAddress.getByName("255.255.255.255"))
+        return targets.toList()
     }
 
     private fun listenLoop(sock: DatagramSocket) {

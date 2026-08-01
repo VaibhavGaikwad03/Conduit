@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -69,14 +70,63 @@ public sealed class DeviceDiscovery : IDisposable
                 ["protocol"] = ConduitPorts.ProtocolVersion
             };
             byte[] data = Encoding.UTF8.GetBytes(beacon.ToJsonString());
-            var target = new IPEndPoint(IPAddress.Broadcast, ConduitPorts.Udp);
-            await _broadcaster.SendAsync(data, data.Length, target).ConfigureAwait(false);
+            // Send to every active interface's directed broadcast (e.g. 192.168.43.255) so the
+            // beacon reaches hotspot/tether subnets, which the limited 255.255.255.255 broadcast
+            // often does not. Keep the limited broadcast too as a fallback. See PROTOCOL.md §1.
+            foreach (var target in BroadcastTargets())
+            {
+                try
+                {
+                    await _broadcaster.SendAsync(data, data.Length, new IPEndPoint(target, ConduitPorts.Udp))
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _log.Verbose(ex, "Beacon send failed for {Target}", target);
+                }
+            }
             _log.Debug("Beacon announced");
         }
         catch (Exception ex)
         {
             _log.Warning(ex, "Failed to send beacon");
         }
+    }
+
+    /// <summary>Directed broadcast address of each active IPv4 interface, plus the limited broadcast.</summary>
+    private static IEnumerable<IPAddress> BroadcastTargets()
+    {
+        var targets = new List<IPAddress>();
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up ||
+                    nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                    continue;
+
+                foreach (var ua in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork || ua.IPv4Mask is null)
+                        continue;
+
+                    byte[] ip = ua.Address.GetAddressBytes();
+                    byte[] mask = ua.IPv4Mask.GetAddressBytes();
+                    if (ip.Length != 4 || mask.Length != 4) continue;
+
+                    var bcast = new byte[4];
+                    for (int i = 0; i < 4; i++)
+                        bcast[i] = (byte)(ip[i] | (mask[i] ^ 0xFF));
+                    targets.Add(new IPAddress(bcast));
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to the limited broadcast below if enumeration fails.
+        }
+        targets.Add(IPAddress.Broadcast);
+        return targets.Distinct();
     }
 
     private async Task BroadcastLoopAsync(CancellationToken ct)
