@@ -222,6 +222,9 @@ public partial class MainWindow : Window
         if (TargetDevice() is { } d) await _coordinator.SendMediaCommandAsync(d.DeviceId, "next");
     }
 
+    // Which phone camera is currently feeding the webcam: "front" (selfie) or "back".
+    private string _webcamFacing = "front";
+
     private async void OnToggleWebcam(object sender, RoutedEventArgs e)
     {
         if (TargetDevice() is not { } d) return;
@@ -237,15 +240,38 @@ public partial class MainWindow : Window
                     "Conduit");
                 return;
             }
-            await _coordinator.SendWebcamStartAsync(d.DeviceId, VideoStreamReceiver.Port);
+            _webcamFacing = "front"; // the phone opens the front camera by default
+            await _coordinator.SendWebcamStartAsync(d.DeviceId, VideoStreamReceiver.Port, _webcamFacing);
             WebcamButton.Content = "🛑  Stop webcam";
+            UpdateSwitchCameraButton(running: true);
         }
         else
         {
             await _coordinator.SendWebcamStopAsync(d.DeviceId);
             webcam.Stop();
             WebcamButton.Content = "🎥  Use phone as webcam";
+            UpdateSwitchCameraButton(running: false);
         }
+    }
+
+    private async void OnSwitchCamera(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        if (!App.Instance.Webcam.IsRunning) return;
+
+        _webcamFacing = _webcamFacing == "front" ? "back" : "front";
+        await _coordinator.SendWebcamSwitchAsync(d.DeviceId, _webcamFacing);
+        UpdateSwitchCameraButton(running: true);
+    }
+
+    // Shows the switch button only while streaming, and labels it with the camera it will switch *to*.
+    private void UpdateSwitchCameraButton(bool running)
+    {
+        SwitchCameraButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        SwitchCameraButton.IsEnabled = running;
+        SwitchCameraButton.Content = _webcamFacing == "front"
+            ? "🔄  Switch to back camera"
+            : "🔄  Switch to front camera";
     }
 
     private async void OnToggleScreen(object sender, RoutedEventArgs e)

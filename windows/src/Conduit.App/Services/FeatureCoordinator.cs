@@ -166,12 +166,20 @@ public sealed class FeatureCoordinator
     public Task SendRemoteCommandAsync(string deviceId, string command) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.RemoteCommand, b => b["command"] = command));
 
-    /// <summary>Tells the phone to start streaming its camera to this PC's video port.</summary>
-    public Task SendWebcamStartAsync(string deviceId, int port) =>
-        _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStart, b => b["port"] = port));
+    /// <summary>Tells the phone to start streaming its camera (front/back) to this PC's video port.</summary>
+    public Task SendWebcamStartAsync(string deviceId, int port, string facing = "front") =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStart, b =>
+        {
+            b["port"] = port;
+            b["facing"] = facing;
+        }));
 
     public Task SendWebcamStopAsync(string deviceId) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStop));
+
+    /// <summary>Flips the phone between its front and back camera while it is already streaming.</summary>
+    public Task SendWebcamSwitchAsync(string deviceId, string facing) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamSwitch, b => b["facing"] = facing));
 
     /// <summary>Tells the phone to mirror its screen to this PC's screen-mirror port.</summary>
     public Task SendScreenStartAsync(string deviceId, int port) =>

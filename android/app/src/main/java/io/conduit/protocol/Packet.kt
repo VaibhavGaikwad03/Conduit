@@ -29,6 +29,7 @@ object PacketType {
     const val SMS_SEND = "sms-send"
     const val WEBCAM_START = "webcam-start"
     const val WEBCAM_STOP = "webcam-stop"
+    const val WEBCAM_SWITCH = "webcam-switch"
     const val SCREEN_START = "screen-start"
     const val SCREEN_STOP = "screen-stop"
     const val INPUT = "input"

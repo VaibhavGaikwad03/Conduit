@@ -263,6 +263,9 @@
                                        Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
                             <Button x:Name="WebcamButton" Style="{StaticResource PrimaryButton}"
                                     Content="🎥  Use phone as webcam" Click="OnToggleWebcam"/>
+                            <Button x:Name="SwitchCameraButton" Style="{StaticResource GhostButton}"
+                                    Content="🔄  Switch to back camera" Click="OnSwitchCamera"
+                                    Margin="0,8,0,0" IsEnabled="False" Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 

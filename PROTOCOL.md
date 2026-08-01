@@ -87,6 +87,9 @@ Every decrypted payload is a JSON object with this envelope:
 | `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
 | `sms-send`            | win → android    | `{ address, body }` |
+| `webcam-start`        | win → android    | `{ port, facing }` — start streaming the phone camera to this PC's webcam port (default 5463). `facing` = `"front"` (default) or `"back"` |
+| `webcam-stop`         | win → android    | `{}` — stop the webcam stream |
+| `webcam-switch`       | win → android    | `{ facing }` — flip the live webcam stream to the `"front"` or `"back"` camera without reconnecting |
 | `screen-start`        | win → android    | `{ port }` — start mirroring the phone screen to the PC on this TCP port (default 5464) |
 | `screen-stop`         | win → android    | `{}` — stop mirroring the phone screen |
 | `input`               | win → android    | `{ action, x, y, x2, y2, durationMs, key, text }` — remote control while mirroring (see below) |

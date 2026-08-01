@@ -50,10 +50,14 @@ class WebcamStreamer(private val context: Context) {
     private var cameraHandler: Handler? = null
     private var fpsRange: Range<Int>? = null
 
+    // Which camera to open: LENS_FACING_FRONT (selfie) or LENS_FACING_BACK. Switchable live.
+    @Volatile private var lensFacing = CameraCharacteristics.LENS_FACING_FRONT
+
     val isRunning get() = running
 
-    fun start(host: String, port: Int) {
+    fun start(host: String, port: Int, facing: String = "front") {
         if (running) return
+        lensFacing = facingFromString(facing)
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
             log.w("Camera permission not granted; cannot start webcam")
@@ -99,12 +103,42 @@ class WebcamStreamer(private val context: Context) {
         }
     }
 
+    /**
+     * Flips the live stream between the front and back camera without tearing down the encoder
+     * or the video socket: it closes the current capture session/device and reopens the other
+     * lens onto the same encoder input surface, so the PC sees one continuous stream.
+     */
+    fun switchCamera(facing: String) {
+        if (!running) return
+        val next = facingFromString(facing)
+        if (next == lensFacing) return
+        lensFacing = next
+        val handler = cameraHandler ?: return
+        handler.post {
+            try { session?.close() } catch (_: Exception) {}
+            try { camera?.close() } catch (_: Exception) {}
+            session = null; camera = null
+            // Ask the encoder for an immediate keyframe so the PC can start decoding the new
+            // camera at once instead of waiting up to a second for the next scheduled one.
+            try {
+                encoder?.setParameters(android.os.Bundle().apply {
+                    putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
+                })
+            } catch (_: Exception) {}
+            openCamera()
+            log.i("Switched to ${if (lensFacing == CameraCharacteristics.LENS_FACING_FRONT) "front" else "back"} camera")
+        }
+    }
+
     private fun openCamera() {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = pickFrontCamera(manager)
+        val cameraId = pickCamera(manager, lensFacing)
         fpsRange = pickFpsRange(manager, cameraId)
-        cameraThread = HandlerThread("webcam-camera").apply { start() }
-        cameraHandler = Handler(cameraThread!!.looper)
+        // Reuse the camera thread across switches; only create it the first time.
+        if (cameraThread == null) {
+            cameraThread = HandlerThread("webcam-camera").apply { start() }
+            cameraHandler = Handler(cameraThread!!.looper)
+        }
 
         try {
             manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
@@ -149,12 +183,15 @@ class WebcamStreamer(private val context: Context) {
         }, cameraHandler)
     }
 
-    private fun pickFrontCamera(manager: CameraManager): String {
+    private fun facingFromString(facing: String): Int =
+        if (facing.equals("back", ignoreCase = true)) CameraCharacteristics.LENS_FACING_BACK
+        else CameraCharacteristics.LENS_FACING_FRONT
+
+    private fun pickCamera(manager: CameraManager, wantFacing: Int): String {
         val ids = manager.cameraIdList
-        // Prefer the front camera (selfie) for a webcam; fall back to whatever exists.
+        // Prefer a camera on the requested side; fall back to the other side, then anything.
         for (id in ids) {
-            val facing = manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING)
-            if (facing == CameraCharacteristics.LENS_FACING_FRONT) return id
+            if (manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == wantFacing) return id
         }
         return ids.firstOrNull() ?: throw IllegalStateException("No camera available")
     }

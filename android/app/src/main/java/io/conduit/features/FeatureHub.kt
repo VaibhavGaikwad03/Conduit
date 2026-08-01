@@ -60,8 +60,11 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.NOTIFICATION_ACTION -> ConduitNotificationListener.instance?.handleAction(packet)
                 PacketType.SMS_SEND -> sms.send(packet.getString("address") ?: "", packet.getString("body") ?: "")
                 PacketType.SMS_LIST -> sms.sendThreadList()
-                PacketType.WEBCAM_START -> peer.ipAddress?.let { ip -> webcam.start(ip, packet.getInt("port", 5463)) }
+                PacketType.WEBCAM_START -> peer.ipAddress?.let { ip ->
+                    webcam.start(ip, packet.getInt("port", 5463), packet.getString("facing") ?: "front")
+                }
                 PacketType.WEBCAM_STOP -> webcam.stop()
+                PacketType.WEBCAM_SWITCH -> webcam.switchCamera(packet.getString("facing") ?: "front")
                 PacketType.SCREEN_START -> peer.ipAddress?.let { ip ->
                     screen.prepare(ip, packet.getInt("port", 5464))
                     ScreenCaptureActivity.promptForCapture(context) // asks the user for capture consent
