@@ -152,8 +152,10 @@ class ScreenStreamer(private val context: Context) {
             w = (w * scale).toInt()
             h = (h * scale).toInt()
         }
-        // H.264 needs even dimensions.
-        return Triple(w and 1.inv(), h and 1.inv(), dpi)
+        // Round to a multiple of 16. The H.264 encoder pads the coded frame up to 16-pixel
+        // macroblocks; any padding columns/rows are uninitialized and show up on the PC as a
+        // green edge. Matching 16 means coded size == display size, so there's no padding.
+        return Triple((w / 16) * 16, (h / 16) * 16, dpi)
     }
 
     private fun drainLoop() {
