@@ -877,14 +877,25 @@ private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
                         )
                     }
                     .pointerInput(Unit) {
-                        detectDragGestures { change, drag ->
-                            change.consume()
-                            val dx = (drag.x * sensitivity).toInt()
-                            val dy = (drag.y * sensitivity).toInt()
-                            if (dx != 0 || dy != 0) {
-                                onPcInput { put("action", "move"); put("dx", dx); put("dy", dy) }
-                            }
-                        }
+                        // Carry the sub-pixel remainder between events so slow drags aren't lost to
+                        // rounding — that leftover is what makes the cursor feel smooth vs. steppy.
+                        var accX = 0f
+                        var accY = 0f
+                        detectDragGestures(
+                            onDragStart = { accX = 0f; accY = 0f },
+                            onDrag = { change, drag ->
+                                change.consume()
+                                accX += drag.x * sensitivity
+                                accY += drag.y * sensitivity
+                                val dx = accX.toInt()
+                                val dy = accY.toInt()
+                                if (dx != 0 || dy != 0) {
+                                    accX -= dx
+                                    accY -= dy
+                                    onPcInput { put("action", "move"); put("dx", dx); put("dy", dy) }
+                                }
+                            },
+                        )
                     },
                 contentAlignment = Alignment.Center,
             ) {
