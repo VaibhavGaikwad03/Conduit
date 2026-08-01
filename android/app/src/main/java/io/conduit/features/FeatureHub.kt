@@ -22,6 +22,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
 
     val clipboard = ClipboardFeature(context)
     val media = MediaFeature(context)
+    val mediaState = MediaStateFeature(context, node)
     val files = FileFeature(context, node)
     val battery = BatteryFeature(context, node)
     val status = DeviceStatusFeature(context, node)
@@ -34,6 +35,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     fun start() {
         node.onPacket = { peer, packet -> handle(peer, packet) }
         battery.start()
+        status.start()
+        mediaState.start()
         clipboard.onLocalChange = { text ->
             node.broadcast(Packet.create(PacketType.CLIPBOARD) {
                 put("content", text); put("contentType", "text")
@@ -45,6 +48,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
 
     fun stop() {
         battery.stop()
+        status.stop()
+        mediaState.stop()
         clipboard.stop()
         webcam.stop()
         screen.stop()
@@ -171,9 +176,10 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
         ConduitRuntime.setSearchResults(list, packet.getBool("truncated"))
     }
 
-    /** Push current battery + device status to all peers (called on connect). */
+    /** Push current battery + device status + now-playing to all peers (called on connect). */
     fun pushStatus() {
         battery.sendNow()
         status.sendNow()
+        mediaState.sendNow()
     }
 }
