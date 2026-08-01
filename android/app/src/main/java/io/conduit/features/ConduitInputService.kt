@@ -110,8 +110,13 @@ class ConduitInputService : AccessibilityService() {
         node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
     }
 
-    private fun focusedEditable(): AccessibilityNodeInfo? =
-        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.takeIf { it.isEditable }
+    private fun focusedEditable(): AccessibilityNodeInfo? {
+        val node = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
+        // Pull the field's latest text; without this, rapid keystrokes read stale content and
+        // characters get dropped or reordered because each keystroke does a read-modify-write.
+        node.refresh()
+        return node.takeIf { it.isEditable }
+    }
 
     private fun dispatch(stroke: GestureDescription.StrokeDescription) {
         try {
