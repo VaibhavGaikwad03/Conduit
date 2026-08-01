@@ -309,11 +309,14 @@
                                                     <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource Muted}"
                                                                FontSize="10" Opacity="0.7" Margin="0,3,0,0"/>
                                                 </StackPanel>
-                                                <Button Grid.Column="1" Content="❌" Click="OnDismissNotification"
+                                                <Button Grid.Column="1" Click="OnDismissNotification"
                                                         Style="{StaticResource GhostButton}" Width="30" Height="30"
                                                         VerticalAlignment="Top" Margin="8,0,0,0"
-                                                        FontSize="13" FontFamily="Segoe UI Emoji"
-                                                        ToolTip="Remove this one from the PC list"/>
+                                                        ToolTip="Remove this one from the PC list">
+                                                    <Path Data="M0,0 L1,1 M1,0 L0,1" Stretch="Uniform"
+                                                          Width="11" Height="11" Stroke="#FF6B6B" StrokeThickness="1.6"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                </Button>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
