@@ -64,7 +64,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.WEBCAM_STOP -> webcam.stop()
                 PacketType.SCREEN_START -> peer.ipAddress?.let { ip ->
                     screen.prepare(ip, packet.getInt("port", 5464))
-                    ScreenCaptureActivity.launch(context) // asks the user for capture consent
+                    ScreenCaptureActivity.promptForCapture(context) // asks the user for capture consent
                 }
                 PacketType.SCREEN_STOP -> screen.stop()
                 PacketType.FILE_SEARCH -> handleFileSearch(peer, packet)
