@@ -310,20 +310,9 @@
                                                                FontSize="10" Opacity="0.7" Margin="0,3,0,0"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Click="OnDismissNotification"
+                                                        Style="{StaticResource IconButton}"
                                                         Width="28" Height="28" VerticalAlignment="Top" Margin="8,0,0,0"
-                                                        Cursor="Hand" ToolTip="Remove this one from the PC list">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border x:Name="bg" Background="Transparent" CornerRadius="6">
-                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
+                                                        ToolTip="Remove this one from the PC list">
                                                     <Path Data="M0,0 L1,1 M1,0 L0,1" Stretch="Uniform"
                                                           Width="11" Height="11" Stroke="#FF6B6B" StrokeThickness="1.7"
                                                           StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
@@ -379,8 +368,13 @@
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,14">
                         <TextBlock Text="DEVICES" Style="{StaticResource Section}" VerticalAlignment="Center"/>
-                        <Button Content="✕" Click="OnCloseDrawer" Style="{StaticResource GhostButton}"
-                                Width="34" Height="32" HorizontalAlignment="Right"/>
+                        <Button Click="OnCloseDrawer" Style="{StaticResource IconButton}"
+                                Width="32" Height="32" HorizontalAlignment="Right"
+                                ToolTip="Close">
+                            <Path Data="M0,0 L1,1 M1,0 L0,1" Stretch="Uniform" Width="12" Height="12"
+                                  Stroke="{StaticResource Fg}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
                     </Grid>
                     <TextBlock DockPanel.Dock="Bottom" Margin="2,12,2,0" TextWrapping="Wrap"
                                Foreground="{StaticResource Muted}" FontSize="11"
