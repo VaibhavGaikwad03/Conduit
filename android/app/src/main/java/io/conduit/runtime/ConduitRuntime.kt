@@ -21,6 +21,21 @@ object ConduitRuntime {
     val connectedIds = MutableStateFlow<Set<String>>(emptySet())
     val lastEvent = MutableStateFlow("")
 
+    /** A pending incoming pair request awaiting the user's confirm/reject. Null when none. */
+    val pendingPairing = MutableStateFlow<PairingPrompt?>(null)
+
+    /** Surface an incoming pair request to the UI; [respond] sends the accept/reject decision. */
+    fun requestPairing(deviceName: String, code: String, respond: (Boolean) -> Unit) {
+        pendingPairing.value = PairingPrompt(deviceName, code, respond)
+    }
+
+    /** The user answered the pairing dialog. */
+    fun answerPairing(accept: Boolean) {
+        val prompt = pendingPairing.value ?: return
+        pendingPairing.value = null
+        prompt.respond(accept)
+    }
+
     /** Active file transfers, shown with a progress bar in the UI. */
     val transfers = MutableStateFlow<List<TransferUi>>(emptyList())
 
@@ -63,6 +78,13 @@ object ConduitRuntime {
         connectedCount.value = connected.size
     }
 }
+
+/** An incoming pair request the user must confirm: shows the peer name + 6-digit code. */
+data class PairingPrompt(
+    val deviceName: String,
+    val code: String,
+    val respond: (Boolean) -> Unit,
+)
 
 /** One file found on the connected peer, shown in the search results list. */
 data class SearchResultUi(

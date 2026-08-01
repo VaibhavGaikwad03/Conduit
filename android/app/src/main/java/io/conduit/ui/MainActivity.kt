@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -168,6 +169,7 @@ private fun ConduitScreen(
     val connected by ConduitRuntime.connectedCount.collectAsState()
     val lastEvent by ConduitRuntime.lastEvent.collectAsState()
     val transfers by ConduitRuntime.transfers.collectAsState()
+    val pendingPairing by ConduitRuntime.pendingPairing.collectAsState()
     val bgScope = CoroutineScope(Dispatchers.Main)
     val context = LocalContext.current
 
@@ -365,6 +367,34 @@ private fun ConduitScreen(
                 onDisconnect = { openDevice?.let { disconnect(it) } },
             )
         }
+    }
+
+    // Incoming pair request: confirm the 6-digit code matches the other device before trusting it.
+    pendingPairing?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = { ConduitRuntime.answerPairing(false) },
+            title = { Text("Pair with ${prompt.deviceName}?") },
+            text = {
+                Column {
+                    Text("Only pair if this code matches the one shown on ${prompt.deviceName}:",
+                        color = TextMuted, fontSize = 13.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(prompt.code, color = Cyan, fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold, letterSpacing = 6.sp,
+                        modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { ConduitRuntime.answerPairing(true) }) {
+                    Text("Pair", color = Cyan, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { ConduitRuntime.answerPairing(false) }) {
+                    Text("Reject", color = Warn)
+                }
+            },
+        )
     }
 }
 
@@ -691,12 +721,14 @@ private fun DeviceDetail(
     onDisconnect: () -> Unit,
 ) {
     val statusColor = when {
-        connected -> Success
+        connected && device.isPaired -> Success
+        connected -> Warn            // connected but not paired — can't use features yet
         device.isPaired -> Warn
         else -> TextMuted
     }
     val statusText = when {
-        connected -> "Connected"
+        connected && device.isPaired -> "Connected"
+        connected -> "Connected · not paired"
         device.isPaired -> "Paired · offline"
         else -> "Discovered · ${device.ipAddress ?: "?"}"
     }
@@ -708,7 +740,7 @@ private fun DeviceDetail(
         Text(statusText, color = TextMuted, fontSize = 13.sp)
     }
 
-    if (connected) {
+    if (connected && device.isPaired) {
         SectionLabel("SEND TO THIS DEVICE")
         Card(
             colors = CardDefaults.cardColors(containerColor = Card),
@@ -750,10 +782,14 @@ private fun DeviceDetail(
         ) {
             Column(Modifier.padding(16.dp)) {
                 Text(
-                    if (device.isPaired)
-                        "This device is paired but not connected right now. Connect to send files and clipboard."
-                    else
-                        "Pair with this device first. You'll confirm a 6-digit code on your PC.",
+                    when {
+                        connected && !device.isPaired ->
+                            "Connected, but not paired yet. Tap Pair, then confirm the matching code on your PC to unlock features."
+                        device.isPaired ->
+                            "This device is paired but not connected right now. Connect to send files and clipboard."
+                        else ->
+                            "Pair with this device first. You'll confirm a 6-digit code on your PC."
+                    },
                     color = TextMuted, fontSize = 13.sp,
                     modifier = Modifier.padding(bottom = 14.dp),
                 )

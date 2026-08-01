@@ -46,6 +46,9 @@ class ConduitService : Service() {
             ConduitRuntime.lastEvent.value = "Disconnected: ${peer.name}"
             ConduitRuntime.refreshDevices()
         }
+        node.onPairingRequest = { peer, code, respond ->
+            ConduitRuntime.requestPairing(peer.name, code, respond)
+        }
 
         ConduitRuntime.node = node
         ConduitRuntime.files = hub.files

@@ -56,7 +56,8 @@ class ConduitNode(private val store: AppStore) {
     var onPeerDisconnected: ((DeviceInfo) -> Unit)? = null
     var onPacket: ((DeviceInfo, Packet) -> Unit)? = null
     /** Return true to accept a pairing request. Defaults to accepting (UI shows the code). */
-    var onPairingRequest: ((DeviceInfo, String) -> Boolean)? = null
+    // The UI shows a confirm/reject dialog, then calls the provided respond() with the decision.
+    var onPairingRequest: ((peer: DeviceInfo, code: String, respond: (Boolean) -> Unit) -> Unit)? = null
 
     val knownDevices: List<DeviceInfo> get() = known.values.toList()
 
@@ -187,18 +188,25 @@ class ConduitNode(private val store: AppStore) {
         val publicKey = packet.getString("publicKey") ?: ""
         log.i("Pair request from ${peer.name}, code $code")
 
-        // If the UI provides a decision callback, honour it; otherwise accept by default
-        // (the UI still shows the code so the user can verify the peer).
-        val accepted = onPairingRequest?.invoke(peer, code) ?: true
-        if (accepted && publicKey.isNotEmpty()) {
-            store.addPaired(PairedDevice(peer.deviceId, peer.name, peer.type, publicKey))
-            peer.isPaired = true
+        // Ask the user (via the UI) to confirm the code before accepting. respond() runs when
+        // they answer; only then do we trust the peer and reply. No UI wired → reject (the code
+        // must be confirmed by a human — never silently auto-accept).
+        val respond: (Boolean) -> Unit = { accepted ->
+            scope.launch {
+                if (accepted && publicKey.isNotEmpty()) {
+                    store.addPaired(PairedDevice(peer.deviceId, peer.name, peer.type, publicKey))
+                    peer.isPaired = true
+                }
+                conn.send(Packet.create(PacketType.PAIR_RESPONSE) {
+                    put("accepted", accepted)
+                    put("publicKey", crypto.publicKeyBase64)
+                })
+                onDevicesChanged?.invoke()
+                log.i("Pair request from ${peer.name} ${if (accepted) "accepted" else "rejected"}")
+            }
         }
-        conn.send(Packet.create(PacketType.PAIR_RESPONSE) {
-            put("accepted", accepted)
-            put("publicKey", crypto.publicKeyBase64)
-        })
-        onDevicesChanged?.invoke()
+        val handler = onPairingRequest
+        if (handler != null) handler(peer, code, respond) else respond(false)
     }
 
     private fun handlePairResponse(peer: DeviceInfo, packet: Packet) {

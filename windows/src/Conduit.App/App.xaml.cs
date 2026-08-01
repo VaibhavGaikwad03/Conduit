@@ -43,6 +43,18 @@ public partial class App : Application
         {
             _store = new AppStore().Load();
             _node = new ConduitNode(_store);
+            // Incoming pair request: pop the window and ask the user to confirm the 6-digit code
+            // (matching the one shown on the phone) before trusting the peer. Runs synchronously
+            // so args.Accepted is set before the node sends its pair-response.
+            _node.PairingRequested += (_, args) => Dispatcher.Invoke(() =>
+            {
+                ShowWindow();
+                var result = System.Windows.MessageBox.Show(
+                    $"Pair with {args.Peer.Name}?\n\nOnly accept if this code matches the one shown on {args.Peer.Name}:\n\n        {args.Code}",
+                    "Conduit — pairing request",
+                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+                args.Accepted = result == System.Windows.MessageBoxResult.Yes;
+            });
 
             _tray = CreateTray();
             Notifications = new NotificationService(_tray);
