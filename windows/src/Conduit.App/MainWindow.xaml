@@ -309,10 +309,11 @@
                                                     <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource Muted}"
                                                                FontSize="10" Opacity="0.7" Margin="0,3,0,0"/>
                                                 </StackPanel>
-                                                <Button Grid.Column="1" Content="✕" Click="OnDismissNotification"
+                                                <Button Grid.Column="1" Content="×" Click="OnDismissNotification"
                                                         Style="{StaticResource GhostButton}" Width="30" Height="30"
-                                                        VerticalAlignment="Top" Margin="8,0,0,0" FontSize="12"
-                                                        ToolTip="Remove from this list"/>
+                                                        VerticalAlignment="Top" Margin="8,0,0,0"
+                                                        FontSize="18" FontFamily="Segoe UI"
+                                                        ToolTip="Remove this one from the PC list"/>
                                             </Grid>
                                         </Border>
                                     </DataTemplate>
