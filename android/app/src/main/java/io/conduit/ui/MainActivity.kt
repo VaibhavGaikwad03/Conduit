@@ -17,7 +17,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +38,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,6 +51,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -233,6 +239,19 @@ private fun ConduitScreen(
         if (!ok) ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
     }
 
+    fun sendRemoteCommand(device: DeviceInfo, command: String) {
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.REMOTE_COMMAND) { put("command", command) },
+        ) ?: false
+        if (!ok) ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
+    }
+
+    // Drive the PC mouse/keyboard from the phone. Movement is relative (dx/dy), like a trackpad.
+    fun sendPcInput(device: DeviceInfo, build: org.json.JSONObject.() -> Unit) {
+        ConduitRuntime.node?.sendTo(device.deviceId, Packet.create(PacketType.PC_INPUT, build))
+    }
+
     fun disconnect(device: DeviceInfo) {
         ConduitRuntime.node?.disconnect(device.deviceId)
         ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
@@ -337,6 +356,8 @@ private fun ConduitScreen(
                 onSendFile = { filePicker.launch("*/*") },
                 onSendClipboard = { openDevice?.let { sendClipboard(it) } },
                 onMediaCommand = { cmd, value -> openDevice?.let { sendMediaCommand(it, cmd, value) } },
+                onRemoteCommand = { cmd -> openDevice?.let { sendRemoteCommand(it, cmd) } },
+                onPcInput = { build -> openDevice?.let { sendPcInput(it, build) } },
                 onSearch = { query -> openDevice?.let { searchFiles(it, query) } },
                 onDownload = { result -> downloadResult(result) },
                 onOpenLink = { url -> openDevice?.let { openLinkOnPc(it, url) } },
@@ -540,6 +561,8 @@ private fun MainContent(
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
     onMediaCommand: (String, Double?) -> Unit,
+    onRemoteCommand: (String) -> Unit,
+    onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
     onOpenLink: (String) -> Unit,
@@ -603,6 +626,8 @@ private fun MainContent(
                     onSendFile = onSendFile,
                     onSendClipboard = onSendClipboard,
                     onMediaCommand = onMediaCommand,
+                    onRemoteCommand = onRemoteCommand,
+                    onPcInput = onPcInput,
                     onSearch = onSearch,
                     onDownload = onDownload,
                     onOpenLink = onOpenLink,
@@ -657,6 +682,8 @@ private fun DeviceDetail(
     onSendFile: () -> Unit,
     onSendClipboard: () -> Unit,
     onMediaCommand: (String, Double?) -> Unit,
+    onRemoteCommand: (String) -> Unit,
+    onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
     onOpenLink: (String) -> Unit,
@@ -700,6 +727,12 @@ private fun DeviceDetail(
         Spacer(Modifier.height(20.dp))
         SectionLabel("SEARCH FILES ON PC")
         FileSearchCard(onSearch, onDownload)
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("TOUCHPAD")
+        TouchpadCard(onPcInput)
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("CONTROL PC")
+        ControlPcCard(onRemoteCommand)
         Spacer(Modifier.height(20.dp))
         SectionLabel("CONTROL PC MEDIA")
         MediaRemoteCard(onMediaCommand)
@@ -761,6 +794,162 @@ private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
                 MediaButton("🔇", Modifier.weight(1f)) { onCommand("mute", null) }
                 MediaButton("🔊", Modifier.weight(1f)) { onCommand("volume", 0.6) }
             }
+        }
+    }
+}
+
+/**
+ * System controls for the PC: lock, sleep, "find my PC" (beeps + pops the window), volume,
+ * and shut down. Each sends a remote-command packet the Windows PowerService executes.
+ * Shut down asks for confirmation first so a stray tap can't power the PC off.
+ */
+@Composable
+private fun ControlPcCard(onCommand: (String) -> Unit) {
+    var confirmShutdown by remember { mutableStateOf(false) }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PcButton("🔒", "Lock", Modifier.weight(1f)) { onCommand("lock") }
+                PcButton("😴", "Sleep", Modifier.weight(1f)) { onCommand("sleep") }
+                PcButton("🔔", "Find PC", Modifier.weight(1f)) { onCommand("findpc") }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PcButton("🔉", "Vol −", Modifier.weight(1f)) { onCommand("voldown") }
+                PcButton("🔇", "Mute", Modifier.weight(1f)) { onCommand("mute") }
+                PcButton("🔊", "Vol +", Modifier.weight(1f)) { onCommand("volup") }
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { confirmShutdown = true },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth().height(46.dp),
+            ) { Text("⏻  Shut down PC", color = Warn, fontWeight = FontWeight.SemiBold) }
+        }
+    }
+
+    if (confirmShutdown) {
+        AlertDialog(
+            onDismissRequest = { confirmShutdown = false },
+            title = { Text("Shut down PC?") },
+            text = { Text("This will power off your PC now, closing everything.") },
+            confirmButton = {
+                TextButton(onClick = { confirmShutdown = false; onCommand("shutdown") }) {
+                    Text("Shut down", color = Warn)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmShutdown = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/**
+ * Turns the phone into a trackpad for the PC: drag to move the cursor (relative, like a laptop
+ * touchpad), tap to left-click, long-press to right-click. Buttons underneath add explicit
+ * clicks and scrolling, and the text field types straight into the focused PC window.
+ */
+@Composable
+private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
+    val sensitivity = 1.6f
+    var text by rememberSaveable { mutableStateOf("") }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(170.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardHi)
+                    .border(1.dp, Cyan.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { onPcInput { put("action", "click"); put("button", "left") } },
+                            onLongPress = { onPcInput { put("action", "click"); put("button", "right") } },
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, drag ->
+                            change.consume()
+                            val dx = (drag.x * sensitivity).toInt()
+                            val dy = (drag.y * sensitivity).toInt()
+                            if (dx != 0 || dy != 0) {
+                                onPcInput { put("action", "move"); put("dx", dx); put("dy", dy) }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Drag to move · tap = click · long-press = right-click",
+                    color = TextMuted, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PcButton("🖱", "Left", Modifier.weight(1f)) {
+                    onPcInput { put("action", "click"); put("button", "left") }
+                }
+                PcButton("🖱", "Right", Modifier.weight(1f)) {
+                    onPcInput { put("action", "click"); put("button", "right") }
+                }
+                PcButton("⬆", "Scroll", Modifier.weight(1f)) {
+                    onPcInput { put("action", "scroll"); put("amount", 120) }
+                }
+                PcButton("⬇", "Scroll", Modifier.weight(1f)) {
+                    onPcInput { put("action", "scroll"); put("amount", -120) }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    singleLine = true,
+                    placeholder = { Text("Type to PC", color = TextMuted) },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(10.dp))
+                Button(
+                    onClick = {
+                        if (text.isNotEmpty()) { onPcInput { put("action", "text"); put("text", text) }; text = "" }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(52.dp),
+                ) { Text("Send", fontWeight = FontWeight.SemiBold) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PcButton("⏎", "Enter", Modifier.weight(1f)) {
+                    onPcInput { put("action", "key"); put("key", "enter") }
+                }
+                PcButton("⌫", "Back", Modifier.weight(1f)) {
+                    onPcInput { put("action", "key"); put("key", "backspace") }
+                }
+            }
+        }
+    }
+}
+
+/** A labelled control button (emoji over a caption) used by the Control-PC and Touchpad cards. */
+@Composable
+private fun PcButton(emoji: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+        modifier = modifier.height(56.dp),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(emoji, fontSize = 18.sp)
+            Text(label, fontSize = 11.sp, color = TextHi)
         }
     }
 }

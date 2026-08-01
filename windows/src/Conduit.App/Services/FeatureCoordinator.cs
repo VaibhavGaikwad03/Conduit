@@ -22,6 +22,7 @@ public sealed class FeatureCoordinator
     private readonly FileTransferService _files;
     private readonly FileSearchService _search;
     private readonly NotificationService _notifications;
+    private readonly InputService _input = new();
 
     /// <summary>Latest phone status for the dashboard.</summary>
     public PhoneStatus Status { get; } = new();
@@ -83,6 +84,10 @@ public sealed class FeatureCoordinator
 
                 case PacketType.RemoteCommand:
                     _power.Execute(packet.GetString("command") ?? "");
+                    break;
+
+                case PacketType.PcInput:
+                    HandlePcInput(packet);
                     break;
 
                 case PacketType.FileOffer:
@@ -165,6 +170,19 @@ public sealed class FeatureCoordinator
 
     public Task SendRemoteCommandAsync(string deviceId, string command) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.RemoteCommand, b => b["command"] = command));
+
+    // The phone's touchpad/keyboard drives the PC mouse and typing via one "pc-input" packet.
+    private void HandlePcInput(Packet packet)
+    {
+        switch (packet.GetString("action"))
+        {
+            case "move":   _input.Move(packet.GetInt("dx"), packet.GetInt("dy")); break;
+            case "click":  _input.Click(packet.GetString("button") ?? "left"); break;
+            case "scroll": _input.Scroll(packet.GetInt("amount")); break;
+            case "text":   _input.Type(packet.GetString("text") ?? ""); break;
+            case "key":    _input.Key(packet.GetString("key") ?? ""); break;
+        }
+    }
 
     /// <summary>Tells the phone to start streaming its camera (front/back) to this PC's video port.</summary>
     public Task SendWebcamStartAsync(string deviceId, int port, string facing = "front") =>

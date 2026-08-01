@@ -37,6 +37,8 @@ Conduit/
 | Phone as PC webcam          | Android → Windows|   ✅    |   ✅    |
 | Screen mirroring            | Android → Windows|   ✅    |   ✅    |
 | Remote control (touch/type) | Windows → Android|   ✅    |   ✅    |
+| Control PC (lock/sleep/shutdown/volume/find) | Android → Windows|   ✅    |   ✅    |
+| Phone as PC touchpad + keyboard | Android → Windows|   ✅    |   ✅    |
 
 ### Phone permissions some features need (granted once)
 

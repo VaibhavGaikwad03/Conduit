@@ -50,6 +50,8 @@ public partial class App : Application
             var clipboard = new ClipboardService();
             var media = new MediaService();
             var power = new PowerService();
+            // "Find my PC" from the phone: beep (in the service) and pop the window to the front.
+            power.FindMyPcRequested += () => Dispatcher.Invoke(ShowWindow);
             var files = new FileTransferService(_node, _store.Config.DownloadFolder);
             files.FileReceived += (_, path) =>
             {

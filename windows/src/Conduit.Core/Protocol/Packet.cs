@@ -24,6 +24,7 @@ public static class PacketType
     public const string MediaState = "media-state";
     public const string MediaCommand = "media-command";
     public const string RemoteCommand = "remote-command";
+    public const string PcInput = "pc-input";
     public const string Battery = "battery";
     public const string DeviceStatus = "device-status";
     public const string SmsList = "sms-list";
