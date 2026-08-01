@@ -245,12 +245,25 @@ public sealed class ConduitNode : IAsyncDisposable
             peer.IsPaired = true;
         }
 
-        _ = conn.SendAsync(Packet.Create(PacketType.PairResponse, b =>
+        var response = Packet.Create(PacketType.PairResponse, b =>
         {
             b["accepted"] = accepted;
             b["publicKey"] = _crypto.PublicKeyBase64;
-        }));
-        DevicesChanged?.Invoke(this, EventArgs.Empty);
+        });
+        if (accepted)
+        {
+            _ = conn.SendAsync(response);
+            DevicesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            // Reject: send the refusal, then drop the session so it doesn't linger as "connected".
+            _ = Task.Run(async () =>
+            {
+                try { await conn.SendAsync(response); } catch { /* best effort */ }
+                await conn.DisposeAsync();
+            });
+        }
     }
 
     private void HandlePairResponse(DeviceInfo peer, Packet packet)

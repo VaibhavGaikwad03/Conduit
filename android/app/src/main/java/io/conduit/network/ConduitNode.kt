@@ -197,11 +197,17 @@ class ConduitNode(private val store: AppStore) {
                     store.addPaired(PairedDevice(peer.deviceId, peer.name, peer.type, publicKey))
                     peer.isPaired = true
                 }
-                conn.send(Packet.create(PacketType.PAIR_RESPONSE) {
+                val response = Packet.create(PacketType.PAIR_RESPONSE) {
                     put("accepted", accepted)
                     put("publicKey", crypto.publicKeyBase64)
-                })
-                onDevicesChanged?.invoke()
+                }
+                if (accepted) {
+                    conn.send(response)
+                    onDevicesChanged?.invoke()
+                } else {
+                    // Reject: send the refusal, then drop the session so it doesn't linger as "connected".
+                    conn.closeWith(response)
+                }
                 log.i("Pair request from ${peer.name} ${if (accepted) "accepted" else "rejected"}")
             }
         }
