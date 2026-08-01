@@ -73,9 +73,10 @@ class ConduitInputService : AccessibilityService() {
 
     /** Append typed text into the currently focused editable field (best effort). */
     fun typeText(text: String) {
-        val node = focusedEditable() ?: run { log.d("No focused field to type into"); return }
+        val node = focusedEditable() ?: run { log.w("typeText: no focused editable field for '$text'"); return }
         val current = node.text?.toString() ?: ""
-        setNodeText(node, current + text)
+        val ok = setNodeText(node, current + text)
+        log.i("typeText '$text' into ${node.className} (setText=$ok)")
     }
 
     private fun backspace() {
@@ -97,25 +98,43 @@ class ConduitInputService : AccessibilityService() {
         }
     }
 
-    private fun setNodeText(node: AccessibilityNodeInfo, value: String) {
+    private fun setNodeText(node: AccessibilityNodeInfo, value: String): Boolean {
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, value)
         }
-        node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        val ok = node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
         // Keep the caret at the end so the next keystroke appends.
         val sel = Bundle().apply {
             putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, value.length)
             putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, value.length)
         }
         node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
+        return ok
     }
 
+    /** Finds the editable field the user is typing into, across windows (not just FOCUS_INPUT). */
     private fun focusedEditable(): AccessibilityNodeInfo? {
-        val node = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        // Pull the field's latest text; without this, rapid keystrokes read stale content and
-        // characters get dropped or reordered because each keystroke does a read-modify-write.
-        node.refresh()
-        return node.takeIf { it.isEditable }
+        // 1) The input-focused node in the active window (the common case).
+        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { n ->
+            n.refresh()
+            if (n.isEditable) return n
+        }
+        // 2) Some apps (and IME-owned windows) don't report FOCUS_INPUT cleanly — scan the tree(s)
+        //    for a focused editable node.
+        rootInActiveWindow?.let { root -> searchEditableFocus(root)?.let { return it } }
+        for (w in windows) {
+            w.root?.let { root -> searchEditableFocus(root)?.let { return it } }
+        }
+        return null
+    }
+
+    private fun searchEditableFocus(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable && node.isFocused) { node.refresh(); return node }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            searchEditableFocus(child)?.let { return it }
+        }
+        return null
     }
 
     private fun dispatch(stroke: GestureDescription.StrokeDescription) {
