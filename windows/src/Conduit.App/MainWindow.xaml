@@ -120,9 +120,19 @@
                                    Foreground="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap"/>
                     </Border>
 
+                    <!-- Connected but not paired: waiting on confirmation before features unlock -->
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
+                            Visibility="{Binding SelectedConnectedUnpaired, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="NOT PAIRED YET" Style="{StaticResource Section}"/>
+                            <TextBlock Text="Connected, but not paired. Confirm the 6-digit code on both devices to unlock features — accept the pairing request on your phone (or click Pair, then approve here)."
+                                       Foreground="{StaticResource Muted}" FontSize="13" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Phone status -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="PHONE STATUS" Style="{StaticResource Section}"/>
                             <Grid Margin="0,2,0,0">
@@ -157,7 +167,7 @@
 
                     <!-- Quick actions -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="QUICK ACTIONS" Style="{StaticResource Section}"/>
                             <UniformGrid Columns="2">
@@ -171,7 +181,7 @@
 
                     <!-- Open a link on the phone -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="OPEN LINK ON PHONE" Style="{StaticResource Section}"/>
                             <Grid Margin="0,2,0,0">
@@ -193,7 +203,7 @@
 
                     <!-- Search files on the phone -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="SEARCH PHONE FILES" Style="{StaticResource Section}"/>
                             <Grid Margin="0,2,0,0">
@@ -238,7 +248,7 @@
 
                     <!-- Media remote -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="MEDIA REMOTE" Style="{StaticResource Section}"/>
                             <UniformGrid Columns="3">
@@ -251,7 +261,7 @@
 
                     <!-- Webcam -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="WEBCAM" Style="{StaticResource Section}"/>
                             <TextBlock Text="Use the phone's camera as a webcam ('Conduit Camera') in any app."
@@ -266,7 +276,7 @@
 
                     <!-- Screen mirror -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
-                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="SCREEN MIRROR" Style="{StaticResource Section}"/>
                             <TextBlock Text="Show the phone's screen in a window on this PC. You'll approve capture on the phone."

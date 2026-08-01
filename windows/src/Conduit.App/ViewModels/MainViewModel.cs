@@ -94,12 +94,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public DeviceRow? Selected
     {
         get => _selected;
-        set { _selected = value; OnChanged(); OnChanged(nameof(HasSelection)); OnChanged(nameof(SelectedConnected)); OnChanged(nameof(SelectedOffline)); }
+        set { _selected = value; OnChanged(); OnChanged(nameof(HasSelection)); OnChanged(nameof(SelectedConnected)); OnChanged(nameof(SelectedReady)); OnChanged(nameof(SelectedConnectedUnpaired)); OnChanged(nameof(SelectedOffline)); }
     }
     public bool HasSelection => _selected is not null;
 
-    /// <summary>True when a device is selected and it's currently connected — actions are only shown then.</summary>
+    /// <summary>True when a device is selected and it's currently connected (regardless of pairing).</summary>
     public bool SelectedConnected => _selected?.Connected ?? false;
+
+    /// <summary>Connected AND paired — the only state where the feature actions are shown.</summary>
+    public bool SelectedReady => (_selected?.Connected ?? false) && (_selected?.Paired ?? false);
+
+    /// <summary>Connected but not paired yet — show a "pair to continue" hint, not the actions.</summary>
+    public bool SelectedConnectedUnpaired => (_selected?.Connected ?? false) && !(_selected?.Paired ?? false);
 
     /// <summary>True when a device is selected but not connected — show a "connect first" hint.</summary>
     public bool SelectedOffline => _selected is not null && !_selected.Connected;
@@ -253,8 +259,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (_selected is null || Devices.All(d => d.DeviceId != _selected.DeviceId))
             Selected = Devices.FirstOrDefault(d => d.Connected) ?? Devices.FirstOrDefault();
 
-        // The selected device's connection state may have just changed.
+        // The selected device's connection/pairing state may have just changed.
         OnChanged(nameof(SelectedConnected));
+        OnChanged(nameof(SelectedReady));
+        OnChanged(nameof(SelectedConnectedUnpaired));
         OnChanged(nameof(SelectedOffline));
     }
 
