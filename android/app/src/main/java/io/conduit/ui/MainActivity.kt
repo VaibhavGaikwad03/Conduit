@@ -877,21 +877,41 @@ private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
                         )
                     }
                     .pointerInput(Unit) {
-                        // Carry the sub-pixel remainder between events so slow drags aren't lost to
-                        // rounding — that leftover is what makes the cursor feel smooth vs. steppy.
-                        var accX = 0f
-                        var accY = 0f
+                        // Light low-pass smoothing: the emitted delta eases toward the raw finger
+                        // delta (smoothing = how much of the new sample to take; higher = snappier).
+                        // accX/accY carry the sub-pixel remainder so slow drags aren't lost to
+                        // rounding; raw/sent track totals so the lift can flush any lag, landing
+                        // the cursor exactly where you dragged (no under-travel from the filter).
+                        val smoothing = 0.5f
+                        var smX = 0f; var smY = 0f
+                        var accX = 0f; var accY = 0f
+                        var rawX = 0f; var rawY = 0f
+                        var sentX = 0; var sentY = 0
                         detectDragGestures(
-                            onDragStart = { accX = 0f; accY = 0f },
+                            onDragStart = {
+                                smX = 0f; smY = 0f; accX = 0f; accY = 0f
+                                rawX = 0f; rawY = 0f; sentX = 0; sentY = 0
+                            },
                             onDrag = { change, drag ->
                                 change.consume()
-                                accX += drag.x * sensitivity
-                                accY += drag.y * sensitivity
-                                val dx = accX.toInt()
-                                val dy = accY.toInt()
+                                val rx = drag.x * sensitivity
+                                val ry = drag.y * sensitivity
+                                rawX += rx; rawY += ry
+                                smX += smoothing * (rx - smX)
+                                smY += smoothing * (ry - smY)
+                                accX += smX; accY += smY
+                                val dx = accX.toInt(); val dy = accY.toInt()
                                 if (dx != 0 || dy != 0) {
-                                    accX -= dx
-                                    accY -= dy
+                                    accX -= dx; accY -= dy
+                                    sentX += dx; sentY += dy
+                                    onPcInput { put("action", "move"); put("dx", dx); put("dy", dy) }
+                                }
+                            },
+                            onDragEnd = {
+                                // Flush the filter's lag so total cursor travel == total finger travel.
+                                val dx = Math.round(rawX) - sentX
+                                val dy = Math.round(rawY) - sentY
+                                if (dx != 0 || dy != 0) {
                                     onPcInput { put("action", "move"); put("dx", dx); put("dy", dy) }
                                 }
                             },
