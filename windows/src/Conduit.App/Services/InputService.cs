@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 using Conduit.Core.Logging;
 using Serilog;
 
@@ -8,13 +9,73 @@ namespace Conduit.App.Services;
 /// Injects mouse and keyboard input on the PC from the phone's touchpad (the "pc-input"
 /// packet). Movement is relative (dx/dy), so the phone acts like a laptop trackpad, and
 /// text is typed as Unicode so any character comes through without keyboard-layout guessing.
+///
+/// Cursor moves are eased rather than applied as raw jumps: incoming deltas accumulate into a
+/// pending target, and a ~200 Hz worker glides the cursor toward it a fraction at a time. That
+/// decouples cursor motion from the (bursty, ~60 Hz) packet arrival, so it looks smooth instead
+/// of steppy while total travel still matches exactly what the finger did.
 /// </summary>
 public sealed class InputService
 {
     private readonly ILogger _log = ConduitLog.For("Input");
 
-    public void Move(int dx, int dy) =>
-        SendMouse(dx, dy, 0, MOUSEEVENTF_MOVE);
+    // Pending relative distance still to travel (sub-pixel remainder kept in the fraction).
+    private double _pendingX;
+    private double _pendingY;
+    private readonly object _moveLock = new();
+    private readonly AutoResetEvent _wake = new(false);
+    private Thread? _mover;
+
+    // How much of the remaining distance to consume per tick, and the tick period.
+    private const double EaseFactor = 0.35;
+    private const int TickMs = 5;
+
+    public void Move(int dx, int dy)
+    {
+        lock (_moveLock) { _pendingX += dx; _pendingY += dy; }
+        EnsureMover();
+        _wake.Set();
+    }
+
+    private void EnsureMover()
+    {
+        if (_mover is not null) return;
+        lock (_moveLock)
+        {
+            if (_mover is not null) return;
+            _mover = new Thread(MoveLoop) { IsBackground = true, Name = "conduit-cursor" };
+            _mover.Start();
+        }
+    }
+
+    // Eases the cursor toward the pending target; sleeps until there's something to do.
+    private void MoveLoop()
+    {
+        while (true)
+        {
+            int sx, sy;
+            lock (_moveLock)
+            {
+                sx = Step(ref _pendingX);
+                sy = Step(ref _pendingY);
+            }
+            if (sx != 0 || sy != 0)
+                SendMouse(sx, sy, 0, MOUSEEVENTF_MOVE);
+
+            bool idle;
+            lock (_moveLock) { idle = Math.Abs(_pendingX) < 1 && Math.Abs(_pendingY) < 1; }
+            if (idle) _wake.WaitOne(200); else Thread.Sleep(TickMs);
+        }
+    }
+
+    // Consume a fraction of the remaining distance, but at least 1px so motion never stalls.
+    private static int Step(ref double pending)
+    {
+        var move = (int)(pending * EaseFactor);   // truncates toward zero
+        if (move == 0 && Math.Abs(pending) >= 1) move = Math.Sign(pending);
+        pending -= move;
+        return move;
+    }
 
     public void Click(string button)
     {
