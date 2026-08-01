@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly ConduitNode _node;
     private readonly FeatureCoordinator _coordinator;
     private readonly ClipboardService _clipboard;
+    private readonly NotificationService _notifications;
     private readonly MainViewModel _vm;
 
     public MainWindow(ConduitNode node, AppStore store, FeatureCoordinator coordinator,
@@ -25,6 +26,7 @@ public partial class MainWindow : Window
         _node = node;
         _coordinator = coordinator;
         _clipboard = clipboard;
+        _notifications = notifications;
 
         InitializeComponent();
         _vm = new MainViewModel(node, coordinator, notifications);
@@ -271,6 +273,16 @@ public partial class MainWindow : Window
             screen.Stop();
             ScreenButton.Content = "🖥  Mirror phone screen";
         }
+    }
+
+    // Clears the PC's mirrored-notification list only — the phone's notifications are untouched.
+    private void OnClearNotifications(object sender, RoutedEventArgs e) => _notifications.Clear();
+
+    // Removes a single mirrored notification from the PC list only.
+    private void OnDismissNotification(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is MirroredNotification n)
+            _notifications.Remove(n.Key);
     }
 
     private void OnScreenClosed(object? sender, EventArgs e)

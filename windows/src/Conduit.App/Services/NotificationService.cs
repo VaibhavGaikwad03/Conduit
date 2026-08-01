@@ -47,6 +47,13 @@ public sealed class NotificationService
         Recent.RemoveAll(n => n.Key == key);
         NotificationsChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    /// <summary>Clears all mirrored notifications from the PC list (does not touch the phone).</summary>
+    public void Clear()
+    {
+        Recent.Clear();
+        NotificationsChanged?.Invoke(this, EventArgs.Empty);
+    }
 }
 
 public sealed class MirroredNotification
@@ -57,4 +64,7 @@ public sealed class MirroredNotification
     public required string Text { get; init; }
     public bool CanReply { get; init; }
     public DateTimeOffset ReceivedAt { get; } = DateTimeOffset.Now;
+
+    /// <summary>"h:mm tt" received time, for the card.</summary>
+    public string TimeText => ReceivedAt.ToString("h:mm tt");
 }
