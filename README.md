@@ -35,6 +35,18 @@ Conduit/
 | Cross-device file search    | both ways        |   ✅    |   ✅    |
 | Open link on other device   | both ways        |   ✅    |   ✅    |
 | Phone as PC webcam          | Android → Windows|   ✅    |   ✅    |
+| Screen mirroring            | Android → Windows|   ✅    |   ✅    |
+| Remote control (touch/type) | Windows → Android|   ✅    |   ✅    |
+
+### Phone permissions some features need (granted once)
+
+A few features rely on Android permissions the user enables once on the phone:
+
+- **Notification mirroring** — *Notification access* for Conduit (Settings → Notification access).
+- **Screen mirroring** — the system screen-capture consent, prompted each time the PC starts it.
+- **Remote control** (touch/type from the PC) — the *Conduit Remote Control* accessibility service
+  (Settings → Accessibility). Reinstalling the app disables it, so re-enable after an update.
+- **Phone as webcam** — the Camera permission.
 
 ## How the connection works (seamless by design)
 
