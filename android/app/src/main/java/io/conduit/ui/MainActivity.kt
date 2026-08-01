@@ -799,9 +799,9 @@ private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
 }
 
 /**
- * System controls for the PC: lock, sleep, "find my PC" (beeps + pops the window), volume,
- * and shut down. Each sends a remote-command packet the Windows PowerService executes.
- * Shut down asks for confirmation first so a stray tap can't power the PC off.
+ * System controls for the PC: lock, sleep, "find my PC" (beeps + pops the window), and shut
+ * down. Each sends a remote-command packet the Windows PowerService executes. Shut down asks
+ * for confirmation first so a stray tap can't power the PC off. (Volume lives in the media card.)
  */
 @Composable
 private fun ControlPcCard(onCommand: (String) -> Unit) {
@@ -816,12 +816,6 @@ private fun ControlPcCard(onCommand: (String) -> Unit) {
                 PcButton("🔒", "Lock", Modifier.weight(1f)) { onCommand("lock") }
                 PcButton("😴", "Sleep", Modifier.weight(1f)) { onCommand("sleep") }
                 PcButton("🔔", "Find PC", Modifier.weight(1f)) { onCommand("findpc") }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PcButton("🔉", "Vol −", Modifier.weight(1f)) { onCommand("voldown") }
-                PcButton("🔇", "Mute", Modifier.weight(1f)) { onCommand("mute") }
-                PcButton("🔊", "Vol +", Modifier.weight(1f)) { onCommand("volup") }
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(

@@ -6,8 +6,9 @@ using Serilog;
 namespace Conduit.App.Services;
 
 /// <summary>
-/// Executes remote system commands sent from the phone: lock, sleep, shut down, adjust the
-/// PC volume, and "find my PC" (an audible alert that also brings the window to the front).
+/// Executes remote system commands sent from the phone: lock, sleep, shut down, and "find my
+/// PC" (an audible alert that also brings the window to the front). (Volume is handled by the
+/// media remote via <see cref="MediaService"/>.)
 /// </summary>
 public sealed class PowerService
 {
@@ -21,14 +22,6 @@ public sealed class PowerService
 
     [DllImport("powrprof.dll", SetLastError = true)]
     private static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
-
-    [DllImport("user32.dll")]
-    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-
-    private const byte VK_VOLUME_MUTE = 0xAD;
-    private const byte VK_VOLUME_DOWN = 0xAE;
-    private const byte VK_VOLUME_UP = 0xAF;
-    private const uint KEYEVENTF_KEYUP = 0x0002;
 
     public void Execute(string command)
     {
@@ -47,15 +40,6 @@ public sealed class PowerService
                 // Graceful shutdown; the /t 0 makes it immediate. User-initiated from their phone.
                 Process.Start(new ProcessStartInfo("shutdown.exe", "/s /t 0") { CreateNoWindow = true, UseShellExecute = false });
                 break;
-            case "volup":
-                TapKey(VK_VOLUME_UP);
-                break;
-            case "voldown":
-                TapKey(VK_VOLUME_DOWN);
-                break;
-            case "mute":
-                TapKey(VK_VOLUME_MUTE);
-                break;
             case "findpc":
                 FindMyPc();
                 break;
@@ -63,12 +47,6 @@ public sealed class PowerService
                 _log.Warning("Unhandled remote command {Command}", command);
                 break;
         }
-    }
-
-    private static void TapKey(byte vk)
-    {
-        keybd_event(vk, 0, 0, UIntPtr.Zero);
-        keybd_event(vk, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
     }
 
     // Beep a few times so the user can locate the PC, and ask the UI to pop to the front.

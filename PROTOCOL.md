@@ -82,7 +82,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
 | `media-state`         | both             | `{ playing, title, artist, app, position, duration, volume }` |
 | `media-command`       | both             | `{ command: "play"\|"pause"\|"next"\|"prev"\|"volume", value? }` |
-| `remote-command`      | both             | `{ command }`. win → android: `"ring"`\|`"ring-stop"`\|`"screenshot"`. android → win: `"lock"`\|`"sleep"`\|`"shutdown"`\|`"findpc"`\|`"volup"`\|`"voldown"`\|`"mute"` |
+| `remote-command`      | both             | `{ command }`. win → android: `"ring"`\|`"ring-stop"`\|`"screenshot"`. android → win: `"lock"`\|`"sleep"`\|`"shutdown"`\|`"findpc"` (volume goes through `media-command`) |
 | `pc-input`            | android → win    | `{ action, ... }` — drive the PC mouse/keyboard from the phone touchpad. `action`: `"move"` (`dx`,`dy` relative px), `"click"` (`button`: `"left"`\|`"right"`\|`"middle"`), `"scroll"` (`amount`, ±120/notch), `"text"` (`text` typed as Unicode), `"key"` (`key`: `enter`\|`backspace`\|`tab`\|`escape`\|arrows\|`home`\|`end`) |
 | `battery`             | android → win    | `{ level, charging, temperature }` |
 | `device-status`       | android → win    | `{ ringerMode }` — ringer mode: `"silent"` \| `"vibrate"` \| `"normal"` |
