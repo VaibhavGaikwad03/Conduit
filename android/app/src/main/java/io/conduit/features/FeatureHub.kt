@@ -67,6 +67,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                     ScreenCaptureActivity.promptForCapture(context) // asks the user for capture consent
                 }
                 PacketType.SCREEN_STOP -> screen.stop()
+                PacketType.INPUT -> handleInput(packet)
                 PacketType.FILE_SEARCH -> handleFileSearch(peer, packet)
                 PacketType.FILE_SEARCH_RESULT -> handleFileSearchResult(peer, packet)
                 PacketType.FILE_REQUEST -> {
@@ -81,6 +82,28 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
             log.e(e, "Error handling ${packet.type} from ${peer.name}")
         }
     }
+
+    /** Route a remote-input packet to the accessibility service, prompting to enable it if needed. */
+    private fun handleInput(packet: Packet) {
+        val svc = ConduitInputService.instance
+        if (svc == null) {
+            ConduitInputService.promptEnable(context)
+            return
+        }
+        when (packet.getString("action")) {
+            "tap" -> svc.tap(fx(packet, "x"), fx(packet, "y"))
+            "swipe" -> svc.swipe(
+                fx(packet, "x"), fx(packet, "y"), fx(packet, "x2"), fx(packet, "y2"),
+                packet.getLong("durationMs", 120),
+            )
+            "key" -> svc.key(packet.getString("key"))
+            "text" -> svc.typeText(packet.getString("text") ?: "")
+            else -> log.d("Unknown input action")
+        }
+    }
+
+    private fun fx(packet: Packet, key: String): Float =
+        (packet.getDouble(key) ?: 0.0).toFloat().coerceIn(0f, 1f)
 
     /** Open a peer-supplied URL in the browser (http/https only). */
     private fun openLink(rawUrl: String) {

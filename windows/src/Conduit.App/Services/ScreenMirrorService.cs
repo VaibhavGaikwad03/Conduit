@@ -25,12 +25,15 @@ public sealed class ScreenMirrorService : IDisposable
     /// <summary>Raised when the user closes the mirror window, so the caller can tell the phone to stop.</summary>
     public event EventHandler? Closed;
 
-    /// <summary>Opens the window and starts decoding/receiving. Returns false on failure.</summary>
-    public bool Start()
+    private string _deviceId = "";
+
+    /// <summary>Opens the window and starts decoding/receiving. Input is sent to <paramref name="deviceId"/>.</summary>
+    public bool Start(string deviceId)
     {
         lock (_gate)
         {
             if (IsRunning) return true;
+            _deviceId = deviceId;
 
             _callback = OnDecodedFrame;
             int hr = ConduitScreenNative.ConduitScreenFeedStart(_callback);
@@ -43,6 +46,11 @@ public sealed class ScreenMirrorService : IDisposable
 
             _window = new ScreenMirrorWindow();
             _window.Closed += (_, _) => StopInternal(fromUi: true);
+            // Forward the window's input to the phone.
+            _window.Tapped += (x, y) => _ = App.Instance.Coordinator.SendInputTapAsync(_deviceId, x, y);
+            _window.Swiped += (x1, y1, x2, y2, ms) => _ = App.Instance.Coordinator.SendInputSwipeAsync(_deviceId, x1, y1, x2, y2, ms);
+            _window.KeyPressed += k => _ = App.Instance.Coordinator.SendInputKeyAsync(_deviceId, k);
+            _window.TextTyped += t => _ = App.Instance.Coordinator.SendInputTextAsync(_deviceId, t);
             _window.Show();
 
             _receiver = new VideoStreamReceiver(OnEncodedFrame, VideoStreamReceiver.ScreenPort);

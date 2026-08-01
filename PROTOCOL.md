@@ -89,6 +89,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `sms-send`            | win → android    | `{ address, body }` |
 | `screen-start`        | win → android    | `{ port }` — start mirroring the phone screen to the PC on this TCP port (default 5464) |
 | `screen-stop`         | win → android    | `{}` — stop mirroring the phone screen |
+| `input`               | win → android    | `{ action, x, y, x2, y2, durationMs, key, text }` — remote control while mirroring (see below) |
 | `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
 | `error`               | both             | `{ code, message }` |
 
@@ -98,6 +99,12 @@ tell the phone *when* and *where* to connect; the phone then opens the video soc
 PC and writes **length-prefixed Annex-B H.264 access units** (4-byte big-endian length + payload,
 same framing as §2 but never encrypted — it is raw video on a separate port). `screen-start` first
 prompts the phone user for the system screen-capture consent before any frame is sent.
+
+**Remote input** (`input`) lets the PC drive the phone while its screen is mirrored. `x`/`y`/`x2`/`y2`
+are normalized `0..1` coordinates over the phone screen, so they're resolution-independent. `action`:
+`tap` (at `x,y`), `swipe` (from `x,y` to `x2,y2` over `durationMs`), `key` (`key` = `back`/`home`/
+`recents`/`enter`/`backspace`), or `text` (type `text` into the focused field). The phone injects these
+via an Accessibility Service the user enables once; if it isn't enabled, the phone prompts to enable it.
 
 **File search** is peer-directed: a `file-search` makes the *other* device search its own files
 (the phone via MediaStore — Downloads/Documents/media; Windows across the user folders). Each

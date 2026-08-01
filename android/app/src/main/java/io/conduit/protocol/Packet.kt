@@ -31,6 +31,7 @@ object PacketType {
     const val WEBCAM_STOP = "webcam-stop"
     const val SCREEN_START = "screen-start"
     const val SCREEN_STOP = "screen-stop"
+    const val INPUT = "input"
     const val DISCONNECT = "disconnect"
     const val ERROR = "error"
 }

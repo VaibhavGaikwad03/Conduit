@@ -180,6 +180,35 @@ public sealed class FeatureCoordinator
     public Task SendScreenStopAsync(string deviceId) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.ScreenStop));
 
+    /// <summary>Remote-control the phone while mirroring: tap at a normalized (0..1) point.</summary>
+    public Task SendInputTapAsync(string deviceId, double x, double y) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.Input, b =>
+        {
+            b["action"] = "tap"; b["x"] = x; b["y"] = y;
+        }));
+
+    /// <summary>Swipe/drag from one normalized point to another over durationMs.</summary>
+    public Task SendInputSwipeAsync(string deviceId, double x1, double y1, double x2, double y2, int durationMs) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.Input, b =>
+        {
+            b["action"] = "swipe";
+            b["x"] = x1; b["y"] = y1; b["x2"] = x2; b["y2"] = y2; b["durationMs"] = durationMs;
+        }));
+
+    /// <summary>Press a phone key: back / home / recents / enter / backspace.</summary>
+    public Task SendInputKeyAsync(string deviceId, string key) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.Input, b =>
+        {
+            b["action"] = "key"; b["key"] = key;
+        }));
+
+    /// <summary>Type text into the phone's focused field.</summary>
+    public Task SendInputTextAsync(string deviceId, string text) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.Input, b =>
+        {
+            b["action"] = "text"; b["text"] = text;
+        }));
+
     public Task SendSmsAsync(string deviceId, string address, string body) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.SmsSend, b =>
         {

@@ -32,6 +32,7 @@ public static class PacketType
     public const string WebcamStop = "webcam-stop";
     public const string ScreenStart = "screen-start";
     public const string ScreenStop = "screen-stop";
+    public const string Input = "input";
     public const string Disconnect = "disconnect";
     public const string Error = "error";
 }

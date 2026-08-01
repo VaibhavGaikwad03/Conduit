@@ -254,7 +254,7 @@ public partial class MainWindow : Window
         if (!screen.IsRunning)
         {
             // Opens the (initially "waiting") window and starts the decoder + receiver.
-            if (!screen.Start())
+            if (!screen.Start(d.DeviceId))
             {
                 MessageBox.Show("Couldn't start the screen mirror decoder.", "Conduit");
                 return;

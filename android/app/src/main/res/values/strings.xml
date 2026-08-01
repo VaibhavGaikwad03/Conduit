@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Conduit</string>
+    <string name="accessibility_desc">Lets your paired PC tap, swipe and type on this phone while its screen is being mirrored. Only works over your trusted Conduit connection.</string>
 </resources>
