@@ -195,7 +195,7 @@ class ConduitInputService : AccessibilityService() {
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle("Enable control from your PC")
                 .setContentText("Turn on 'Conduit Remote Control' in Accessibility to let the PC tap and type.")
-                .setSmallIcon(android.R.drawable.ic_menu_edit)
+                .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
                 .setContentIntent(pending)
                 .setAutoCancel(true)
                 .build()

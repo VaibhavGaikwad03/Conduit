@@ -130,7 +130,7 @@ object Ringer {
         val notification = Notification.Builder(app, CHANNEL_ID)
             .setContentTitle("Conduit is ringing this phone")
             .setContentText("Tap Stop to silence it.")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
             .setCategory(Notification.CATEGORY_ALARM)
             .setOngoing(true)
             .setAutoCancel(false)

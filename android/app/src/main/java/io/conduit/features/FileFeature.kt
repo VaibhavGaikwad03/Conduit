@@ -226,7 +226,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle("File received")
                 .setContentText("$name saved to Downloads")
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
                 .setAutoCancel(true)
                 .setContentIntent(openDownloads)
                 .build()

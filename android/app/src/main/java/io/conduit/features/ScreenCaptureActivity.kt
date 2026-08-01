@@ -75,7 +75,7 @@ class ScreenCaptureActivity : Activity() {
             val notification = Notification.Builder(context, CHANNEL_ID)
                 .setContentTitle("Mirror your screen to the PC?")
                 .setContentText("Your paired PC is asking to show your screen. Tap to allow.")
-                .setSmallIcon(android.R.drawable.stat_notify_sync)
+                .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
                 .setContentIntent(pending)
                 .setFullScreenIntent(pending, true)
                 .setAutoCancel(true)

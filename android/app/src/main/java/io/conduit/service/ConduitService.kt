@@ -157,7 +157,7 @@ class ConduitService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Conduit")
             .setContentText("Connected to your ecosystem")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+            .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
             .setContentIntent(pending)
             .setOngoing(true)
             .build()
