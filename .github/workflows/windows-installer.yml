@@ -1,0 +1,71 @@
+name: Build Windows installer
+
+# Build the Conduit installer and attach it to a GitHub Release.
+#  - Push a tag like v1.2.3           -> builds + publishes a release with the .exe
+#  - Or run manually (workflow_dispatch) with a version -> builds + uploads as an artifact
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (e.g. 1.2.3)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write   # needed to create the release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Determine version
+        id: ver
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            # Tag ref like refs/tags/v1.2.3 -> 1.2.3
+            $v = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            $v = "${{ github.event.inputs.version }}"
+          }
+          Write-Host "Building version $v"
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build installer
+        working-directory: windows
+        run: |
+          ./installer/build-installer.ps1 -Version "${{ steps.ver.outputs.version }}"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ConduitSetup-${{ steps.ver.outputs.version }}
+          path: windows/artifacts/installer/ConduitSetup-${{ steps.ver.outputs.version }}.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = "windows/artifacts/installer/ConduitSetup-${{ steps.ver.outputs.version }}.exe"
+          gh release create "${{ github.ref_name }}" $exe `
+            --title "Conduit ${{ github.ref_name }}" `
+            --generate-notes
