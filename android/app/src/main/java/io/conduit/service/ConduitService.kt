@@ -158,9 +158,24 @@ class ConduitService : Service() {
             .setContentTitle("Conduit")
             .setContentText("Connected to your ecosystem")
             .setSmallIcon(io.conduit.R.drawable.ic_stat_conduit)
+            .setLargeIcon(appIconBitmap()) // the real (colored) app icon, shown on the notification card
             .setContentIntent(pending)
             .setOngoing(true)
             .build()
+    }
+
+    /** Renders the launcher (adaptive) icon into a bitmap so it can be a notification large icon. */
+    private fun appIconBitmap(): android.graphics.Bitmap? = try {
+        val d = packageManager.getApplicationIcon(packageName)
+        val size = 192
+        val bmp = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        d.setBounds(0, 0, size, size)
+        d.draw(canvas)
+        bmp
+    } catch (e: Exception) {
+        log.w(e, "Could not render app icon for notification")
+        null
     }
 
     companion object {
