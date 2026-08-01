@@ -84,7 +84,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `media-command`       | both             | `{ command: "play"\|"pause"\|"next"\|"prev"\|"volume", value? }` |
 | `remote-command`      | both             | `{ command: "lock"\|"sleep"\|"ring"\|"ring-stop"\|"screenshot" }` |
 | `battery`             | android → win    | `{ level, charging, temperature }` |
-| `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
+| `device-status`       | android → win    | `{ ringerMode }` — ringer mode: `"silent"` \| `"vibrate"` \| `"normal"` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
 | `sms-send`            | win → android    | `{ address, body }` |
 | `webcam-start`        | win → android    | `{ port, facing }` — start streaming the phone camera to this PC's webcam port (default 5463). `facing` = `"front"` (default) or `"back"` |

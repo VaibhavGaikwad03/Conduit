@@ -142,11 +142,6 @@
                             </Grid>
                             <Border Height="1" Background="{StaticResource Stroke}" Margin="0,12" Opacity="0.5"/>
                             <Grid Margin="0,0,0,10">
-                                <TextBlock Text="Wi-Fi" Foreground="{StaticResource Muted}" FontSize="13"/>
-                                <TextBlock Text="{Binding WifiText}" HorizontalAlignment="Right"
-                                           Foreground="{StaticResource Fg}" FontWeight="SemiBold" FontSize="13"/>
-                            </Grid>
-                            <Grid Margin="0,0,0,10">
                                 <TextBlock Text="Ringer" Foreground="{StaticResource Muted}" FontSize="13"/>
                                 <TextBlock Text="{Binding RingerText}" HorizontalAlignment="Right"
                                            Foreground="{StaticResource Fg}" FontWeight="SemiBold" FontSize="13"/>

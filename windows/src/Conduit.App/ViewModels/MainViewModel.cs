@@ -127,9 +127,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string _batteryText = "—";
     public string BatteryText { get => _batteryText; set => Set(ref _batteryText, value); }
 
-    private string _wifiText = "—";
-    public string WifiText { get => _wifiText; set => Set(ref _wifiText, value); }
-
     private string _ringerText = "—";
     public string RingerText { get => _ringerText; set => Set(ref _ringerText, value); }
 
@@ -266,7 +263,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var s = _coordinator.Status;
         BatteryLevel = s.BatteryLevel;
         BatteryText = s.BatteryLevel > 0 ? $"{s.BatteryLevel}%{(s.Charging ? "  ⚡ charging" : "")}" : "—";
-        WifiText = string.IsNullOrEmpty(s.Ssid) ? "—" : s.Ssid;
         RingerText = string.IsNullOrEmpty(s.RingerMode) ? "—" : s.RingerMode;
         NowPlaying = string.IsNullOrWhiteSpace(s.NowPlaying) || s.NowPlaying.Trim() == "—"
             ? "Nothing playing" : s.NowPlaying;

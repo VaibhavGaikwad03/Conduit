@@ -132,7 +132,6 @@ class MainActivity : ComponentActivity() {
 
     private fun requestPermissions() {
         val perms = mutableListOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.READ_SMS,
             Manifest.permission.SEND_SMS,
             Manifest.permission.CAMERA,
