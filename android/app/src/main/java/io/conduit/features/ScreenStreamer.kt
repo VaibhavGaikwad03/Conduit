@@ -69,7 +69,9 @@ class ScreenStreamer(private val context: Context) {
             log.w("No target host prepared for screen mirror")
             return
         }
-        start(h, port, resultCode, data)
+        // This runs on the main thread (the consent activity's result callback), but start() opens
+        // a TCP socket — do it off the main thread to avoid NetworkOnMainThreadException.
+        thread(name = "screen-start") { start(h, port, resultCode, data) }
     }
 
     private fun start(host: String, port: Int, resultCode: Int, data: Intent) {
