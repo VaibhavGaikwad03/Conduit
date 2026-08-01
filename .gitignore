@@ -1,6 +1,7 @@
 # --- Windows / .NET ---
 windows/**/bin/
 windows/**/obj/
+windows/artifacts/
 *.user
 
 # --- Android / Gradle ---
