@@ -211,6 +211,14 @@ public sealed class ConduitNode : IAsyncDisposable
                 _ = conn.DisposeAsync();
                 return;
             default:
+                // Security gate: only paired peers may use features. An unpaired peer can still
+                // complete the handshake and exchange pair-request/response (handled above), but
+                // every feature packet is dropped until it's actually paired.
+                if (!_store.IsPaired(peer.DeviceId))
+                {
+                    _log.Warning("Dropping {Type} from unpaired peer {Peer}", packet.Type, peer);
+                    return;
+                }
                 PacketReceived?.Invoke(this, new PacketEventArgs(peer, packet));
                 return;
         }

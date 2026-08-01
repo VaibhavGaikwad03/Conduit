@@ -167,7 +167,16 @@ class ConduitNode(private val store: AppStore) {
                 onDevicesChanged?.invoke()
                 conn.close()
             }
-            else -> onPacket?.invoke(peer, packet)
+            else -> {
+                // Security gate: only paired peers may use features. An unpaired peer can still
+                // complete the handshake and exchange pair-request/response (handled above), but
+                // every feature packet is dropped until it's actually paired.
+                if (!store.isPaired(peer.deviceId)) {
+                    log.w("Dropping ${packet.type} from unpaired peer ${peer.name}")
+                    return
+                }
+                onPacket?.invoke(peer, packet)
+            }
         }
     }
 
