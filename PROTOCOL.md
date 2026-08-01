@@ -9,6 +9,8 @@ Both implementations MUST stay in sync with it.
 |---------------------|------|-----------|
 | Discovery beacon    | 5461 | UDP (broadcast) |
 | Session / features  | 5462 | TCP |
+| Webcam video stream | 5463 | TCP (H.264) |
+| Screen mirror stream| 5464 | TCP (H.264) |
 
 ## 1. Discovery (UDP 5461)
 
@@ -85,8 +87,17 @@ Every decrypted payload is a JSON object with this envelope:
 | `device-status`       | android → win    | `{ ssid, signal, ringerMode }` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
 | `sms-send`            | win → android    | `{ address, body }` |
+| `screen-start`        | win → android    | `{ port }` — start mirroring the phone screen to the PC on this TCP port (default 5464) |
+| `screen-stop`         | win → android    | `{}` — stop mirroring the phone screen |
 | `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
 | `error`               | both             | `{ code, message }` |
+
+**Video streams** (webcam and screen mirror) are far too heavy for the JSON session channel, so
+each uses its own dedicated TCP port (5463 webcam, 5464 screen). The control packets above only
+tell the phone *when* and *where* to connect; the phone then opens the video socket back to the
+PC and writes **length-prefixed Annex-B H.264 access units** (4-byte big-endian length + payload,
+same framing as §2 but never encrypted — it is raw video on a separate port). `screen-start` first
+prompts the phone user for the system screen-capture consent before any frame is sent.
 
 **File search** is peer-directed: a `file-search` makes the *other* device search its own files
 (the phone via MediaStore — Downloads/Documents/media; Windows across the user folders). Each

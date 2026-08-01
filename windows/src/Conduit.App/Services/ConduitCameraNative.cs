@@ -25,6 +25,10 @@ internal static class ConduitCameraNative
         });
     }
 
+    /// <summary>Touch to force the static ctor (which installs the DllImport resolver) to run,
+    /// so callers that only use the screen-mirror entry points still resolve the DLL correctly.</summary>
+    internal static void EnsureLoaded() { }
+
     /// <summary>Creates and starts the "Conduit Camera" virtual camera. Returns an HRESULT.</summary>
     [DllImport(Dll, PreserveSig = true)]
     public static extern int ConduitVCamStart();

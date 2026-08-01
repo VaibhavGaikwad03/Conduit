@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Needed so the service can access the camera while streaming it to the PC (Android 14+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <!-- Needed so the service can mirror the screen (MediaProjection) to the PC (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -66,7 +68,16 @@
         <service
             android:name=".service.ConduitService"
             android:exported="false"
-            android:foregroundServiceType="dataSync|camera" />
+            android:foregroundServiceType="dataSync|camera|mediaProjection" />
+
+        <!-- Transparent activity that asks the user for screen-capture consent when the PC
+             requests screen mirroring (MediaProjection can only be requested from an Activity). -->
+        <activity
+            android:name=".features.ScreenCaptureActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Stops the "find my phone" ring from its notification action -->
         <receiver

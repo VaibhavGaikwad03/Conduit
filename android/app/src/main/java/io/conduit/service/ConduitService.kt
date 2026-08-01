@@ -83,6 +83,36 @@ class ConduitService : Service() {
         }
     }
 
+    /**
+     * Adds/removes the mediaProjection foreground-service type while mirroring the screen. Android
+     * 14+ requires the FGS to include the mediaProjection type *before* MediaProjectionManager
+     * hands over the projection, so the screen feature promotes the service only while streaming.
+     */
+    fun setMediaProjectionActive(active: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        val type = if (active) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+        }
+        try {
+            startForeground(NOTIF_ID, buildNotification(), type)
+            log.i("Foreground mediaProjection type ${if (active) "enabled" else "disabled"}")
+        } catch (e: Exception) {
+            log.e(e, "Could not update foreground service type for mediaProjection")
+        }
+    }
+
+    /** Called by ScreenCaptureActivity once the user answers the screen-capture consent dialog. */
+    fun onScreenCaptureResult(resultCode: Int, data: Intent?) {
+        hub.screen.onPermissionResult(resultCode, data)
+    }
+
+    /** Remembers where to stream the screen; the consent activity supplies the projection next. */
+    fun prepareScreenMirror(host: String, port: Int) {
+        hub.screen.prepare(host, port)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onBind(intent: Intent?): IBinder? = null

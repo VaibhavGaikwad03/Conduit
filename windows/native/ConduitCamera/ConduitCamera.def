@@ -9,3 +9,6 @@ EXPORTS
     ConduitFeedStart
     ConduitFeedFrame
     ConduitFeedStop
+    ConduitScreenFeedStart
+    ConduitScreenFeedFrame
+    ConduitScreenFeedStop

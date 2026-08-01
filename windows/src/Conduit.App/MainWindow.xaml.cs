@@ -245,6 +245,43 @@ public partial class MainWindow : Window
             WebcamButton.Content = "🎥  Use phone as webcam";
         }
     }
+
+    private async void OnToggleScreen(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        var screen = App.Instance.ScreenMirror;
+
+        if (!screen.IsRunning)
+        {
+            // Opens the (initially "waiting") window and starts the decoder + receiver.
+            if (!screen.Start())
+            {
+                MessageBox.Show("Couldn't start the screen mirror decoder.", "Conduit");
+                return;
+            }
+            // Reset the button when the user closes the mirror window.
+            screen.Closed -= OnScreenClosed;
+            screen.Closed += OnScreenClosed;
+            await _coordinator.SendScreenStartAsync(d.DeviceId, VideoStreamReceiver.ScreenPort);
+            ScreenButton.Content = "🛑  Stop mirroring";
+        }
+        else
+        {
+            await _coordinator.SendScreenStopAsync(d.DeviceId);
+            screen.Stop();
+            ScreenButton.Content = "🖥  Mirror phone screen";
+        }
+    }
+
+    private void OnScreenClosed(object? sender, EventArgs e)
+    {
+        // The user closed the mirror window — tell the phone to stop and reset the button.
+        Dispatcher.Invoke(() =>
+        {
+            ScreenButton.Content = "🖥  Mirror phone screen";
+            if (TargetDevice() is { } d) _ = _coordinator.SendScreenStopAsync(d.DeviceId);
+        });
+    }
 }
 
 internal static class NativeMethods

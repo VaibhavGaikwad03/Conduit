@@ -28,6 +28,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     val remote = RemoteCommandFeature(context)
     val sms = SmsFeature(context, node)
     val webcam = WebcamStreamer(context)
+    val screen = ScreenStreamer(context)
     val fileSearch = FileSearchFeature(context)
 
     fun start() {
@@ -46,6 +47,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
         battery.stop()
         clipboard.stop()
         webcam.stop()
+        screen.stop()
     }
 
     private fun handle(peer: DeviceInfo, packet: Packet) {
@@ -60,6 +62,11 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.SMS_LIST -> sms.sendThreadList()
                 PacketType.WEBCAM_START -> peer.ipAddress?.let { ip -> webcam.start(ip, packet.getInt("port", 5463)) }
                 PacketType.WEBCAM_STOP -> webcam.stop()
+                PacketType.SCREEN_START -> peer.ipAddress?.let { ip ->
+                    screen.prepare(ip, packet.getInt("port", 5464))
+                    ScreenCaptureActivity.launch(context) // asks the user for capture consent
+                }
+                PacketType.SCREEN_STOP -> screen.stop()
                 PacketType.FILE_SEARCH -> handleFileSearch(peer, packet)
                 PacketType.FILE_SEARCH_RESULT -> handleFileSearchResult(peer, packet)
                 PacketType.FILE_REQUEST -> {

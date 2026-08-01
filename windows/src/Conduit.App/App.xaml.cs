@@ -22,6 +22,7 @@ public partial class App : Application
     public FeatureCoordinator Coordinator { get; private set; } = null!;
     public NotificationService Notifications { get; private set; } = null!;
     public WebcamService Webcam { get; private set; } = null!;
+    public ScreenMirrorService ScreenMirror { get; private set; } = null!;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -60,6 +61,7 @@ public partial class App : Application
 
             Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, fileSearch, Notifications);
             Webcam = new WebcamService();
+            ScreenMirror = new ScreenMirrorService();
 
             _window = new MainWindow(_node, _store, Coordinator, clipboard, Notifications);
             _window.Show();
@@ -121,6 +123,7 @@ public partial class App : Application
     private async void ExitApp()
     {
         Webcam?.Stop();
+        ScreenMirror?.Stop();
         if (_node is not null) await _node.DisposeAsync();
         _tray?.Dispose();
         ConduitLog.Shutdown();

@@ -14,24 +14,32 @@ namespace Conduit.App.Services;
 /// </summary>
 public sealed class VideoStreamReceiver
 {
-    /// <summary>Dedicated video port (session is 5462, discovery 5461).</summary>
+    /// <summary>Dedicated webcam video port (session is 5462, discovery 5461).</summary>
     public const int Port = 5463;
+
+    /// <summary>Dedicated screen-mirror video port.</summary>
+    public const int ScreenPort = 5464;
 
     private readonly ILogger _log = ConduitLog.For("Webcam");
     private readonly Action<byte[]> _onFrame;
+    private readonly int _port;
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
 
-    public VideoStreamReceiver(Action<byte[]> onFrame) => _onFrame = onFrame;
+    public VideoStreamReceiver(Action<byte[]> onFrame, int port = Port)
+    {
+        _onFrame = onFrame;
+        _port = port;
+    }
 
     public void Start()
     {
         Stop();
         _cts = new CancellationTokenSource();
-        _listener = new TcpListener(IPAddress.Any, Port);
+        _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Start();
         _ = Task.Run(() => AcceptLoop(_cts.Token));
-        _log.Information("Video receiver listening on {Port}", Port);
+        _log.Information("Video receiver listening on {Port}", _port);
     }
 
     private async Task AcceptLoop(CancellationToken ct)

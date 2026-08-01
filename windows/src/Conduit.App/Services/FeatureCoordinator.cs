@@ -173,6 +173,13 @@ public sealed class FeatureCoordinator
     public Task SendWebcamStopAsync(string deviceId) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.WebcamStop));
 
+    /// <summary>Tells the phone to mirror its screen to this PC's screen-mirror port.</summary>
+    public Task SendScreenStartAsync(string deviceId, int port) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.ScreenStart, b => b["port"] = port));
+
+    public Task SendScreenStopAsync(string deviceId) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.ScreenStop));
+
     public Task SendSmsAsync(string deviceId, string address, string body) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.SmsSend, b =>
         {

@@ -266,6 +266,18 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Screen mirror -->
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
+                            Visibility="{Binding SelectedConnected, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="SCREEN MIRROR" Style="{StaticResource Section}"/>
+                            <TextBlock Text="Show the phone's screen in a window on this PC. You'll approve capture on the phone."
+                                       Foreground="{StaticResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                            <Button x:Name="ScreenButton" Style="{StaticResource PrimaryButton}"
+                                    Content="🖥  Mirror phone screen" Click="OnToggleScreen"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Recent notifications -->
                     <Border Style="{StaticResource CardBorder}">
                         <StackPanel>
