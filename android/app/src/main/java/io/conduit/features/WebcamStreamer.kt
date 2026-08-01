@@ -7,11 +7,13 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Range
 import android.view.Surface
 import androidx.core.content.ContextCompat
 import io.conduit.logging.ConduitLog
@@ -46,6 +48,7 @@ class WebcamStreamer(private val context: Context) {
     private var out: DataOutputStream? = null
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
+    private var fpsRange: Range<Int>? = null
 
     val isRunning get() = running
 
@@ -70,6 +73,16 @@ class WebcamStreamer(private val context: Context) {
                     setInteger(MediaFormat.KEY_BIT_RATE, BITRATE)
                     setInteger(MediaFormat.KEY_FRAME_RATE, FPS)
                     setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1) // keyframe each second
+                    // Low-latency encoding: constant bitrate for even pacing, and no B-frames so
+                    // the encoder never holds a frame back to reorder (B-frames need future frames).
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                    if (android.os.Build.VERSION.SDK_INT >= 29) {
+                        setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+                    }
+                    // Ask the encoder to emit each frame with minimal internal queueing (API 30+).
+                    if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        setInteger(MediaFormat.KEY_LATENCY, 1)
+                    }
                 }
                 codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 inputSurface = codec.createInputSurface()
@@ -89,6 +102,7 @@ class WebcamStreamer(private val context: Context) {
     private fun openCamera() {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         val cameraId = pickFrontCamera(manager)
+        fpsRange = pickFpsRange(manager, cameraId)
         cameraThread = HandlerThread("webcam-camera").apply { start() }
         cameraHandler = Handler(cameraThread!!.looper)
 
@@ -114,6 +128,13 @@ class WebcamStreamer(private val context: Context) {
         val surface = inputSurface ?: return
         val request = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
             addTarget(surface)
+            // Pin the frame rate so it can't drop to ~15 fps in low light (which reads as lag),
+            // and turn off video stabilization, which delays frames by a few frames to smooth them.
+            fpsRange?.let { set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
+            set(
+                CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF,
+            )
         }
         @Suppress("DEPRECATION")
         device.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
@@ -136,6 +157,29 @@ class WebcamStreamer(private val context: Context) {
             if (facing == CameraCharacteristics.LENS_FACING_FRONT) return id
         }
         return ids.firstOrNull() ?: throw IllegalStateException("No camera available")
+    }
+
+    /**
+     * Picks a steady capture frame-rate range. Prefers a fixed [30,30] (no variance → smoothest,
+     * lowest jitter); otherwise the fixed range with the highest fps ≤ target, else the widest
+     * range topping out at the target. Falls back to null (device default) if none are advertised.
+     */
+    private fun pickFpsRange(manager: CameraManager, cameraId: String): Range<Int>? {
+        val ranges = try {
+            manager.getCameraCharacteristics(cameraId)
+                .get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+        } catch (e: Exception) {
+            log.v(e, "Could not read AE fps ranges")
+            null
+        } ?: return null
+
+        val target = FPS
+        return ranges.filter { it.upper <= target }
+            .maxWithOrNull(
+                compareBy<Range<Int>> { it.lower == it.upper } // prefer fixed ranges
+                    .thenBy { it.lower },                        // then highest floor
+            )
+            ?: ranges.filter { it.upper == target }.minByOrNull { it.lower } // any range that hits target
     }
 
     private fun drainLoop() {

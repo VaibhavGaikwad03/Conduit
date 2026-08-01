@@ -9,6 +9,7 @@
 #include <mftransform.h>
 #include <mferror.h>
 #include <wmcodecdsp.h>
+#include <codecapi.h> // CODECAPI_AVLowLatencyMode; ICodecAPI comes from strmif.h (already included)
 #include <vector>
 
 #include "Guids.h"
@@ -18,6 +19,7 @@
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "wmcodecdspuuid.lib")
+#pragma comment(lib, "strmiids.lib")
 
 namespace
 {
@@ -25,6 +27,26 @@ namespace
     ConduitFrameWriter g_writer;
     std::vector<BYTE> g_repack; // tight NV12 scratch
     bool g_started = false;
+
+    // The Microsoft H.264 decoder buffers several frames before emitting output (it fills a
+    // reorder/lookahead pipeline), which shows up as visible webcam lag. Low-latency mode makes
+    // it emit one output per input immediately. Set it both ways for robustness across builds.
+    void EnableLowLatency()
+    {
+        IMFAttributes* attrs = nullptr;
+        if (SUCCEEDED(g_decoder->GetAttributes(&attrs)) && attrs)
+        {
+            attrs->SetUINT32(MF_LOW_LATENCY, TRUE);
+            attrs->Release();
+        }
+        ICodecAPI* codec = nullptr;
+        if (SUCCEEDED(g_decoder->QueryInterface(IID_PPV_ARGS(&codec))) && codec)
+        {
+            VARIANT v; VariantInit(&v); v.vt = VT_BOOL; v.boolVal = VARIANT_TRUE;
+            codec->SetValue(&CODECAPI_AVLowLatencyMode, &v);
+            codec->Release();
+        }
+    }
 
     HRESULT SetInputType()
     {
@@ -137,6 +159,7 @@ extern "C" HRESULT ConduitFeedStart()
     if (FAILED(hr)) return hr;
 
     hr = CoCreateInstance(CLSID_CMSH264DecoderMFT, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&g_decoder));
+    if (SUCCEEDED(hr)) EnableLowLatency();
     if (SUCCEEDED(hr)) hr = SetInputType();
     if (SUCCEEDED(hr)) hr = SelectOutputType();
     if (SUCCEEDED(hr)) hr = g_decoder->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);

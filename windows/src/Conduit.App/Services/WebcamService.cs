@@ -44,12 +44,18 @@ public sealed class WebcamService : IDisposable
     /// </summary>
     public bool EnsureInstalled()
     {
-        if (IsInstalled()) return true;
         if (!File.Exists(WebcamPaths.BundledDll))
         {
+            // Nothing to deploy/update from — fall back to whatever is already registered.
+            if (IsInstalled()) return true;
             _log.Error("Bundled ConduitCamera.dll not found at {Path}", WebcamPaths.BundledDll);
             return false;
         }
+        // Re-deploy not just when unregistered, but also when the bundled DLL differs from the
+        // installed one — otherwise a rebuilt native DLL (e.g. the low-latency decoder) would
+        // never reach the ProgramData copy the Frame Server actually loads.
+        if (IsInstalled() && FilesEqual(WebcamPaths.BundledDll, WebcamPaths.InstalledDll))
+            return true;
 
         var dir = Path.GetDirectoryName(WebcamPaths.InstalledDll)!;
         // A single elevated shell: make the folder, copy the DLL, register it.
@@ -74,6 +80,25 @@ public sealed class WebcamService : IDisposable
         {
             _log.Warning(ex, "Elevated install was cancelled or failed");
             return false;
+        }
+    }
+
+    /// <summary>True if both files exist and have identical contents (length + SHA-256).</summary>
+    private static bool FilesEqual(string a, string b)
+    {
+        try
+        {
+            var fa = new FileInfo(a);
+            var fb = new FileInfo(b);
+            if (!fa.Exists || !fb.Exists || fa.Length != fb.Length) return false;
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            using var sa = File.OpenRead(a);
+            using var sb = File.OpenRead(b);
+            return sha.ComputeHash(sa).AsSpan().SequenceEqual(sha.ComputeHash(sb));
+        }
+        catch
+        {
+            return false; // if we can't compare, err toward re-deploying
         }
     }
 
