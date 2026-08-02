@@ -177,6 +177,12 @@ public partial class MainWindow : Window
         await _coordinator.SendFileSearchAsync(d.DeviceId, query);
     }
 
+    private void OnClearSearch(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        _vm.ClearSearch();
+    }
+
     private async void OnDownloadResult(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SearchResultRow row }) return;

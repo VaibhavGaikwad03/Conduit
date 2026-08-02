@@ -1059,13 +1059,28 @@ private fun FileSearchCard(onSearch: (String) -> Unit, onDownload: (SearchResult
                 ) { Text("Search", fontWeight = FontWeight.SemiBold) }
             }
 
+            val close = {
+                query = ""
+                searched = false
+                ConduitRuntime.clearSearch()
+            }
             when {
                 pending -> StatusLine("Searching…")
-                searched && results.isEmpty() -> StatusLine("No matching files")
+                searched && results.isEmpty() -> {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { StatusLine("No matching files") }
+                        TextButton(onClick = close) { Text("✕  Close", color = TextHi) }
+                    }
+                }
                 results.isNotEmpty() -> {
                     Spacer(Modifier.height(6.dp))
-                    StatusLine("${results.size} result${if (results.size == 1) "" else "s"}" +
-                        if (truncated) " · showing first 100" else "")
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            StatusLine("${results.size} result${if (results.size == 1) "" else "s"}" +
+                                if (truncated) " · showing first 100" else "")
+                        }
+                        TextButton(onClick = close) { Text("✕  Close", color = TextHi) }
+                    }
                     results.forEach { SearchResultItem(it, onDownload) }
                 }
                 else -> StatusLine("Search this device's Downloads, Documents and media by name.")

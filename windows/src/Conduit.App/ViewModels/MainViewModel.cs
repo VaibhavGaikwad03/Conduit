@@ -199,6 +199,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SearchStatus = "Searching…";
     }
 
+    /// <summary>Clears the results and status; called when the user closes the search list.</summary>
+    public void ClearSearch()
+    {
+        SearchResults.Clear();
+        OnChanged(nameof(HasSearchResults));
+        SearchStatus = "";
+    }
+
     private void OnSearchResults(FileSearchResultsEventArgs r)
     {
         SearchResults.Clear();

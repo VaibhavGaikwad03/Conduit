@@ -57,6 +57,13 @@ object ConduitRuntime {
         searchPending.value = true
     }
 
+    /** Clears the current search results and status; called when the user closes the search list. */
+    fun clearSearch() {
+        searchResults.value = emptyList()
+        searchTruncated.value = false
+        searchPending.value = false
+    }
+
     @Synchronized
     fun upsertTransfer(t: TransferUi) {
         val list = transfers.value.toMutableList()

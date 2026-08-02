@@ -218,8 +218,17 @@
                                 <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Height="34"
                                         Margin="8,0,0,0" Content="🔍  Search" Click="OnSearchFiles"/>
                             </Grid>
-                            <TextBlock Text="{Binding SearchStatus}" Foreground="{StaticResource Muted}"
-                                       FontSize="12" Margin="2,8,0,0"/>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding SearchStatus}" Foreground="{StaticResource Muted}"
+                                           FontSize="12" Margin="2,0,0,0" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Style="{StaticResource GhostButton}" Height="28"
+                                        Content="✕  Close" Click="OnClearSearch"
+                                        Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"/>
+                            </Grid>
                             <ItemsControl ItemsSource="{Binding SearchResults}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
