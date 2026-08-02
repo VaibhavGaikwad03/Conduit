@@ -87,6 +87,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool HasTransfers => Transfers.Count > 0;
     public bool HasSearchResults => SearchResults.Count > 0;
 
+    private bool _searchActive;
+    /// <summary>True from when a search starts until it is closed — drives the Close button's visibility.</summary>
+    public bool SearchActive { get => _searchActive; private set => Set(ref _searchActive, value); }
+
     private string _searchStatus = "";
     public string SearchStatus { get => _searchStatus; set => Set(ref _searchStatus, value); }
 
@@ -197,11 +201,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SearchResults.Clear();
         OnChanged(nameof(HasSearchResults));
         SearchStatus = "Searching…";
+        SearchActive = true;
     }
 
-    /// <summary>Clears the results and status; called when the user closes the search list.</summary>
+    /// <summary>Stops the search and clears the results/status; called when the user closes the search.</summary>
     public void ClearSearch()
     {
+        SearchActive = false;
         SearchResults.Clear();
         OnChanged(nameof(HasSearchResults));
         SearchStatus = "";
@@ -209,6 +215,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void OnSearchResults(FileSearchResultsEventArgs r)
     {
+        if (!SearchActive) return; // search was closed before the peer replied — ignore late results
         SearchResults.Clear();
         foreach (var it in r.Results)
         {

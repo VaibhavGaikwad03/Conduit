@@ -227,7 +227,7 @@
                                            FontSize="12" Margin="2,0,0,0" VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Style="{StaticResource GhostButton}" Height="28"
                                         Content="✕  Close" Click="OnClearSearch"
-                                        Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"/>
+                                        Visibility="{Binding SearchActive, Converter={StaticResource BoolToVis}}"/>
                             </Grid>
                             <ItemsControl ItemsSource="{Binding SearchResults}" Margin="0,6,0,0">
                                 <ItemsControl.ItemTemplate>

@@ -1065,7 +1065,12 @@ private fun FileSearchCard(onSearch: (String) -> Unit, onDownload: (SearchResult
                 ConduitRuntime.clearSearch()
             }
             when {
-                pending -> StatusLine("Searching…")
+                pending -> {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { StatusLine("Searching…") }
+                        TextButton(onClick = close) { Text("✕  Stop", color = TextHi) }
+                    }
+                }
                 searched && results.isEmpty() -> {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { StatusLine("No matching files") }
