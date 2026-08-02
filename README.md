@@ -2,7 +2,7 @@
 
 **Conduit** is a cross-device continuity platform that makes Windows and Android behave like one device — seamless clipboard sharing, file transfer, notification mirroring, SMS, media control, screen mirroring, and using your phone as a PC webcam or touchpad — all over your local WiFi network, with no cloud, no accounts, and no data leaving your network.
 
-Think of it as an open, self-hosted alternative to *Phone Link* / *KDE Connect*.
+Think of it as an open, self-hosted alternative to proprietary phone-to-PC linking tools.
 
 ## Repository layout
 
