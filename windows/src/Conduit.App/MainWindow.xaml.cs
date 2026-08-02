@@ -173,14 +173,19 @@ public partial class MainWindow : Window
             MessageBox.Show("Type at least 2 characters to search.", "Conduit");
             return;
         }
-        _vm.BeginSearch();
-        await _coordinator.SendFileSearchAsync(d.DeviceId, query);
+        var requestId = System.Guid.NewGuid().ToString("N");
+        _vm.BeginSearch(requestId);
+        await _coordinator.SendFileSearchAsync(d.DeviceId, query, requestId);
     }
 
-    private void OnClearSearch(object sender, RoutedEventArgs e)
+    private async void OnClearSearch(object sender, RoutedEventArgs e)
     {
+        var requestId = _vm.ActiveSearchId;
         SearchBox.Clear();
         _vm.ClearSearch();
+        // Tell the phone to abort the walk it's still running for this search.
+        if (requestId is not null && TargetDevice() is { } d)
+            await _coordinator.SendFileSearchCancelAsync(d.DeviceId, requestId);
     }
 
     private async void OnDownloadResult(object sender, RoutedEventArgs e)

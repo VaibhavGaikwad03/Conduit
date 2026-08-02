@@ -39,17 +39,17 @@ class FileSearchFeature(private val context: Context) {
      * — everything); otherwise we fall back to MediaStore (media + Downloads only).
      */
     @Synchronized
-    fun search(query: String): Pair<List<Result>, Boolean> {
+    fun search(query: String, isCancelled: () -> Boolean = { false }): Pair<List<Result>, Boolean> {
         val q = query.trim()
         if (q.length < MIN_QUERY_LEN) return emptyList<Result>() to false
-        return if (hasAllFilesAccess()) searchFileSystem(q) else searchMediaStore(q)
+        return if (hasAllFilesAccess()) searchFileSystem(q, isCancelled) else searchMediaStore(q, isCancelled)
     }
 
     private fun hasAllFilesAccess(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
 
     /** Recursively walks shared storage (skipping the app-private Android/ tree) for name matches. */
-    private fun searchFileSystem(q: String): Pair<List<Result>, Boolean> {
+    private fun searchFileSystem(q: String, isCancelled: () -> Boolean): Pair<List<Result>, Boolean> {
         val results = mutableListOf<Result>()
         val root = Environment.getExternalStorageDirectory() ?: return results to false
         val needle = q.lowercase()
@@ -57,6 +57,7 @@ class FileSearchFeature(private val context: Context) {
         val stack = ArrayDeque<File>()
         stack.addLast(root)
         while (stack.isNotEmpty()) {
+            if (isCancelled()) return results to truncated
             val children = stack.removeLast().listFiles() ?: continue
             for (f in children) {
                 if (f.isDirectory) {
@@ -75,7 +76,7 @@ class FileSearchFeature(private val context: Context) {
         return results to truncated
     }
 
-    private fun searchMediaStore(q: String): Pair<List<Result>, Boolean> {
+    private fun searchMediaStore(q: String, isCancelled: () -> Boolean): Pair<List<Result>, Boolean> {
         val results = mutableListOf<Result>()
         val collection = MediaStore.Files.getContentUri("external")
         val projection = arrayOf(
@@ -98,6 +99,7 @@ class FileSearchFeature(private val context: Context) {
                 val mimeCol = c.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MIME_TYPE)
                 val pathCol = c.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
                 while (c.moveToNext()) {
+                    if (isCancelled()) break
                     if (results.size >= MAX_RESULTS) { truncated = true; break }
                     val name = c.getString(nameCol) ?: continue
                     val size = c.getLong(sizeCol)

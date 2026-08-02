@@ -76,6 +76,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `file-complete`       | both             | `{ transferId, ok, sha256 }` |
 | `file-search`         | both             | `{ requestId, query }` — ask the peer to search its files by filename substring |
 | `file-search-result`  | both             | `{ requestId, truncated, results: [{ id, name, size, folder, mime }] }` — reply to `file-search` |
+| `file-search-cancel`  | both             | `{ requestId }` — ask the peer to stop the search with this id; it aborts the in-flight walk and sends no result |
 | `file-request`        | both             | `{ id }` — ask the peer to send a file it returned in a `file-search-result` (streamed via `file-offer`/`file-chunk`/`file-complete`) |
 | `open-link`           | both             | `{ url }` — open this URL in the peer's default browser (only `http`/`https` are honored) |
 | `notification`        | android → win    | `{ key, appName, title, text, iconB64?, canReply, actions:[] }` |

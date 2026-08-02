@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Conduit.Core.Logging;
@@ -23,6 +24,9 @@ public sealed class FeatureCoordinator
     private readonly FileSearchService _search;
     private readonly NotificationService _notifications;
     private readonly InputService _input = new();
+
+    // In-flight searches we're serving for the peer, keyed by requestId, so a cancel can abort them.
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _searchCancels = new();
 
     /// <summary>Latest phone status for the dashboard.</summary>
     public PhoneStatus Status { get; } = new();
@@ -102,6 +106,10 @@ public sealed class FeatureCoordinator
 
                 case PacketType.FileSearchResult:
                     HandleFileSearchResult(e.Peer.DeviceId, packet);
+                    break;
+
+                case PacketType.FileSearchCancel:
+                    HandleFileSearchCancel(packet);
                     break;
 
                 case PacketType.FileRequest:
@@ -243,12 +251,16 @@ public sealed class FeatureCoordinator
         }));
 
     /// <summary>Asks the peer to search its files; results arrive via <see cref="SearchResults"/>.</summary>
-    public Task SendFileSearchAsync(string deviceId, string query) =>
+    public Task SendFileSearchAsync(string deviceId, string query, string requestId) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.FileSearch, b =>
         {
-            b["requestId"] = Guid.NewGuid().ToString("N");
+            b["requestId"] = requestId;
             b["query"] = query;
         }));
+
+    /// <summary>Tells the peer to stop the search with this id (aborts its in-flight walk).</summary>
+    public Task SendFileSearchCancelAsync(string deviceId, string requestId) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.FileSearchCancel, b => b["requestId"] = requestId));
 
     /// <summary>Asks the peer to send a file it returned in a search result.</summary>
     public Task SendFileRequestAsync(string deviceId, string id) =>
@@ -290,23 +302,54 @@ public sealed class FeatureCoordinator
 
     private void HandleFileSearch(string fromDeviceId, Packet packet)
     {
-        var (results, truncated) = _search.Search(packet.GetString("query") ?? "");
-        _ = _node.SendToAsync(fromDeviceId, Packet.Create(PacketType.FileSearchResult, b =>
+        var requestId = packet.GetString("requestId") ?? "";
+        var query = packet.GetString("query") ?? "";
+
+        // Walk the disk off the receive loop so an incoming file-search-cancel can be processed
+        // (and abort this walk) while it runs, rather than being queued behind it.
+        var cts = new CancellationTokenSource();
+        if (requestId.Length > 0) _searchCancels[requestId] = cts;
+        _ = Task.Run(() =>
         {
-            b["requestId"] = packet.GetString("requestId") ?? "";
-            b["truncated"] = truncated;
-            var arr = new JsonArray();
-            foreach (var r in results)
-                arr.Add(new JsonObject
+            try
+            {
+                var (results, truncated) = _search.Search(query, cts.Token);
+                if (cts.IsCancellationRequested) return; // stopped by the peer — don't reply
+                _ = _node.SendToAsync(fromDeviceId, Packet.Create(PacketType.FileSearchResult, b =>
                 {
-                    ["id"] = r.Id,
-                    ["name"] = r.Name,
-                    ["size"] = r.Size,
-                    ["folder"] = r.Folder,
-                    ["mime"] = r.Mime,
-                });
-            b["results"] = arr;
-        }));
+                    b["requestId"] = requestId;
+                    b["truncated"] = truncated;
+                    var arr = new JsonArray();
+                    foreach (var r in results)
+                        arr.Add(new JsonObject
+                        {
+                            ["id"] = r.Id,
+                            ["name"] = r.Name,
+                            ["size"] = r.Size,
+                            ["folder"] = r.Folder,
+                            ["mime"] = r.Mime,
+                        });
+                    b["results"] = arr;
+                }));
+            }
+            catch (Exception ex) { _log.Error(ex, "File search failed"); }
+            finally
+            {
+                if (requestId.Length > 0) _searchCancels.TryRemove(requestId, out _);
+                cts.Dispose();
+            }
+        });
+    }
+
+    /// <summary>Peer asked us to stop a search it started — abort the matching in-flight walk.</summary>
+    private void HandleFileSearchCancel(Packet packet)
+    {
+        var requestId = packet.GetString("requestId") ?? "";
+        if (requestId.Length > 0 && _searchCancels.TryGetValue(requestId, out var cts))
+        {
+            cts.Cancel();
+            _log.Information("File search {RequestId} cancelled by peer", requestId);
+        }
     }
 
     private void HandleFileSearchResult(string fromDeviceId, Packet packet)
@@ -332,6 +375,7 @@ public sealed class FeatureCoordinator
         SearchResults?.Invoke(this, new FileSearchResultsEventArgs
         {
             DeviceId = fromDeviceId,
+            RequestId = packet.GetString("requestId") ?? "",
             Results = list,
             Truncated = packet.GetBool("truncated"),
         });
@@ -342,6 +386,7 @@ public sealed class FeatureCoordinator
 public sealed class FileSearchResultsEventArgs : EventArgs
 {
     public required string DeviceId { get; init; }
+    public string RequestId { get; init; } = "";
     public required IReadOnlyList<FileSearchService.Result> Results { get; init; }
     public bool Truncated { get; init; }
 }

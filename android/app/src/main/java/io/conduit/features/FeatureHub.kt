@@ -10,8 +10,13 @@ import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
 import io.conduit.runtime.ConduitRuntime
 import io.conduit.runtime.SearchResultUi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Routes every incoming packet to the right Android feature and exposes helpers the
@@ -31,6 +36,10 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     val webcam = WebcamStreamer(context)
     val screen = ScreenStreamer(context)
     val fileSearch = FileSearchFeature(context)
+
+    // Searches we're serving for the peer run off the read loop so a cancel can abort them mid-walk.
+    private val searchScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val cancelledSearches = ConcurrentHashMap.newKeySet<String>()
 
     fun start() {
         node.onPacket = { peer, packet -> handle(peer, packet) }
@@ -78,6 +87,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.INPUT -> handleInput(packet)
                 PacketType.FILE_SEARCH -> handleFileSearch(peer, packet)
                 PacketType.FILE_SEARCH_RESULT -> handleFileSearchResult(peer, packet)
+                PacketType.FILE_SEARCH_CANCEL -> handleFileSearchCancel(packet)
                 PacketType.FILE_REQUEST -> {
                     val uri = fileSearch.resolve(packet.getString("id") ?: "")
                     if (uri != null) files.sendFile(peer.deviceId, uri)
@@ -137,21 +147,36 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
         }
     }
 
-    /** Peer asked us to search our files: run it and reply with the matches. */
+    /** Peer asked us to search our files: run it off the read loop and reply with the matches. */
     private fun handleFileSearch(peer: DeviceInfo, packet: Packet) {
-        val (results, truncated) = fileSearch.search(packet.getString("query") ?: "")
-        node.sendTo(peer.deviceId, Packet.create(PacketType.FILE_SEARCH_RESULT) {
-            put("requestId", packet.getString("requestId") ?: "")
-            put("truncated", truncated)
-            put("results", JSONArray().apply {
-                results.forEach { r ->
-                    put(JSONObject().apply {
-                        put("id", r.id); put("name", r.name); put("size", r.size)
-                        put("folder", r.folder); put("mime", r.mime)
-                    })
-                }
+        val requestId = packet.getString("requestId") ?: ""
+        val query = packet.getString("query") ?: ""
+        cancelledSearches.remove(requestId) // clear any stale flag before starting
+        searchScope.launch {
+            val (results, truncated) = fileSearch.search(query) { cancelledSearches.contains(requestId) }
+            if (cancelledSearches.remove(requestId)) return@launch // stopped by the peer — don't reply
+            node.sendTo(peer.deviceId, Packet.create(PacketType.FILE_SEARCH_RESULT) {
+                put("requestId", requestId)
+                put("truncated", truncated)
+                put("results", JSONArray().apply {
+                    results.forEach { r ->
+                        put(JSONObject().apply {
+                            put("id", r.id); put("name", r.name); put("size", r.size)
+                            put("folder", r.folder); put("mime", r.mime)
+                        })
+                    }
+                })
             })
-        })
+        }
+    }
+
+    /** Peer asked us to stop a search it started — abort the matching in-flight walk. */
+    private fun handleFileSearchCancel(packet: Packet) {
+        val requestId = packet.getString("requestId") ?: ""
+        if (requestId.isNotEmpty()) {
+            cancelledSearches.add(requestId)
+            log.i("File search $requestId cancelled by peer")
+        }
     }
 
     /** Peer replied to our search: surface the matches to the UI. */
@@ -173,7 +198,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 )
             }
         }
-        ConduitRuntime.setSearchResults(list, packet.getBool("truncated"))
+        ConduitRuntime.setSearchResults(packet.getString("requestId") ?: "", list, packet.getBool("truncated"))
     }
 
     /** Push current battery + device status + now-playing to all peers (called on connect). */

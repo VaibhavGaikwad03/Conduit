@@ -265,11 +265,12 @@ private fun ConduitScreen(
             ConduitRuntime.lastEvent.value = "Type at least 2 characters to search"
             return
         }
-        ConduitRuntime.beginSearch()
+        val requestId = UUID.randomUUID().toString().replace("-", "")
+        ConduitRuntime.beginSearch(requestId, device.deviceId)
         val ok = ConduitRuntime.node?.sendTo(
             device.deviceId,
             Packet.create(PacketType.FILE_SEARCH) {
-                put("requestId", UUID.randomUUID().toString().replace("-", ""))
+                put("requestId", requestId)
                 put("query", q)
             },
         ) ?: false
@@ -1062,7 +1063,7 @@ private fun FileSearchCard(onSearch: (String) -> Unit, onDownload: (SearchResult
             val close = {
                 query = ""
                 searched = false
-                ConduitRuntime.clearSearch()
+                ConduitRuntime.cancelSearch()
             }
             when {
                 pending -> {

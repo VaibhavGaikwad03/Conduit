@@ -91,6 +91,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>True from when a search starts until it is closed — drives the Close button's visibility.</summary>
     public bool SearchActive { get => _searchActive; private set => Set(ref _searchActive, value); }
 
+    /// <summary>Id of the in-flight search, or null once it's closed — used to drop stale replies.</summary>
+    public string? ActiveSearchId { get; private set; }
+
     private string _searchStatus = "";
     public string SearchStatus { get => _searchStatus; set => Set(ref _searchStatus, value); }
 
@@ -196,8 +199,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     /// <summary>Clears the results and shows a searching state; called when a search is fired.</summary>
-    public void BeginSearch()
+    public void BeginSearch(string requestId)
     {
+        ActiveSearchId = requestId;
         SearchResults.Clear();
         OnChanged(nameof(HasSearchResults));
         SearchStatus = "Searching…";
@@ -207,6 +211,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Stops the search and clears the results/status; called when the user closes the search.</summary>
     public void ClearSearch()
     {
+        ActiveSearchId = null;
         SearchActive = false;
         SearchResults.Clear();
         OnChanged(nameof(HasSearchResults));
@@ -215,7 +220,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void OnSearchResults(FileSearchResultsEventArgs r)
     {
-        if (!SearchActive) return; // search was closed before the peer replied — ignore late results
+        if (r.RequestId != ActiveSearchId) return; // stale/cancelled reply — ignore
         SearchResults.Clear();
         foreach (var it in r.Results)
         {

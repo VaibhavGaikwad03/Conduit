@@ -27,7 +27,7 @@ public sealed class FileSearchService
     private static readonly string[] Roots = BuildRoots();
 
     /// <summary>Finds files whose name contains <paramref name="query"/>; registers each as a token.</summary>
-    public (IReadOnlyList<Result> Results, bool Truncated) Search(string query)
+    public (IReadOnlyList<Result> Results, bool Truncated) Search(string query, CancellationToken ct = default)
     {
         var results = new List<Result>();
         query = (query ?? "").Trim();
@@ -37,8 +37,9 @@ public sealed class FileSearchService
         foreach (var root in Roots)
         {
             if (!Directory.Exists(root)) continue;
-            foreach (var path in SafeEnumerateFiles(root))
+            foreach (var path in SafeEnumerateFiles(root, ct))
             {
+                if (ct.IsCancellationRequested) return (results, truncated);
                 var name = Path.GetFileName(path);
                 if (name.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 if (results.Count >= MaxResults) { truncated = true; break; }
@@ -77,12 +78,13 @@ public sealed class FileSearchService
     }
 
     /// <summary>Recursively lists files, quietly skipping folders we can't read.</summary>
-    private static IEnumerable<string> SafeEnumerateFiles(string root)
+    private static IEnumerable<string> SafeEnumerateFiles(string root, CancellationToken ct)
     {
         var stack = new Stack<string>();
         stack.Push(root);
         while (stack.Count > 0)
         {
+            if (ct.IsCancellationRequested) yield break;
             var dir = stack.Pop();
 
             string[] subdirs;

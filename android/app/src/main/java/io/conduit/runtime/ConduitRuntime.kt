@@ -3,6 +3,8 @@ package io.conduit.runtime
 import io.conduit.features.FileFeature
 import io.conduit.model.DeviceInfo
 import io.conduit.network.ConduitNode
+import io.conduit.protocol.Packet
+import io.conduit.protocol.PacketType
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -45,20 +47,34 @@ object ConduitRuntime {
     /** True while a search request is outstanding, so the UI can show a spinner/hint. */
     val searchPending = MutableStateFlow(false)
 
-    fun setSearchResults(list: List<SearchResultUi>, truncated: Boolean) {
+    // The in-flight search's id and the peer serving it, so we can cancel it and drop stale replies.
+    @Volatile private var activeSearchId: String? = null
+    @Volatile private var activeSearchDeviceId: String? = null
+
+    fun setSearchResults(requestId: String, list: List<SearchResultUi>, truncated: Boolean) {
+        if (requestId != activeSearchId) return // stale/cancelled reply — ignore
         searchResults.value = list
         searchTruncated.value = truncated
         searchPending.value = false
     }
 
-    fun beginSearch() {
+    fun beginSearch(requestId: String, deviceId: String) {
+        activeSearchId = requestId
+        activeSearchDeviceId = deviceId
         searchResults.value = emptyList()
         searchTruncated.value = false
         searchPending.value = true
     }
 
-    /** Clears the current search results and status; called when the user closes the search list. */
-    fun clearSearch() {
+    /** Stops the current search: tells the peer to abort its walk, then clears local state. */
+    fun cancelSearch() {
+        val id = activeSearchId
+        val deviceId = activeSearchDeviceId
+        activeSearchId = null
+        activeSearchDeviceId = null
+        if (id != null && deviceId != null) {
+            node?.sendTo(deviceId, Packet.create(PacketType.FILE_SEARCH_CANCEL) { put("requestId", id) })
+        }
         searchResults.value = emptyList()
         searchTruncated.value = false
         searchPending.value = false
