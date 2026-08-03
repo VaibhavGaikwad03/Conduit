@@ -59,8 +59,18 @@ public sealed class FileStreamService
     public void RegisterIncoming(string transferId, string senderDeviceId, string name, long size)
     {
         if (string.IsNullOrEmpty(transferId)) return;
-        _pending[transferId] = new Pending(senderDeviceId, Path.GetFileName(name), size);
-        Report(new TransferProgress { Id = transferId, Name = Path.GetFileName(name), IsSending = false, Total = size });
+        var clean = Path.GetFileName(name);
+        _pending[transferId] = new Pending(senderDeviceId, clean, size);
+        Report(new TransferProgress { Id = transferId, Name = clean, IsSending = false, Total = size });
+        // If the raw stream never connects, don't leave the UI stuck at 0%.
+        _ = Task.Delay(20_000).ContinueWith(t =>
+        {
+            if (_pending.TryRemove(transferId, out _))
+            {
+                _log.Warning("Stream for {Name} never arrived", clean);
+                Report(new TransferProgress { Id = transferId, Name = clean, IsSending = false, Total = size, Done = true, Failed = true });
+            }
+        });
     }
 
     // ---- Sending --------------------------------------------------------------
