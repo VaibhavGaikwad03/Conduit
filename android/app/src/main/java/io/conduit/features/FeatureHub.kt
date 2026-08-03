@@ -30,6 +30,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
     val media = MediaFeature(context)
     val mediaState = MediaStateFeature(context, node)
     val files = FileFeature(context, node)
+    val fileStream = FileStreamFeature(context, node)
     val battery = BatteryFeature(context, node)
     val status = DeviceStatusFeature(context, node)
     val remote = RemoteCommandFeature(context)
@@ -44,6 +45,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
 
     fun start() {
         node.onPacket = { peer, packet -> handle(peer, packet) }
+        files.stream = fileStream
+        fileStream.start()
         battery.start()
         status.start()
         mediaState.start()
@@ -63,6 +66,7 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
         clipboard.stop()
         webcam.stop()
         screen.stop()
+        fileStream.stop()
     }
 
     private fun handle(peer: DeviceInfo, packet: Packet) {
@@ -71,7 +75,17 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 PacketType.CLIPBOARD -> clipboard.setFromRemote(packet.getString("content") ?: "")
                 PacketType.MEDIA_COMMAND -> media.handle(packet.getString("command") ?: "", packet.getDouble("value"))
                 PacketType.REMOTE_COMMAND -> remote.handle(packet.getString("command") ?: "")
-                PacketType.FILE_OFFER, PacketType.FILE_CHUNK, PacketType.FILE_COMPLETE -> files.handle(packet)
+                PacketType.FILE_OFFER ->
+                    // A stream offer means the bytes arrive over the raw fast port, not as chunks here.
+                    if (packet.getBool("stream")) {
+                        fileStream.registerIncoming(
+                            packet.getString("transferId") ?: "", peer.deviceId,
+                            packet.getString("name") ?: "conduit-file", packet.getLong("size"),
+                        )
+                    } else {
+                        files.handle(packet)
+                    }
+                PacketType.FILE_CHUNK, PacketType.FILE_COMPLETE -> files.handle(packet)
                 PacketType.NOTIFICATION_ACTION -> ConduitNotificationListener.instance?.handleAction(packet)
                 PacketType.SMS_SEND -> sms.send(packet.getString("address") ?: "", packet.getString("body") ?: "")
                 PacketType.SMS_LIST -> sms.sendThreadList()

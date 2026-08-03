@@ -43,6 +43,9 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val incoming = ConcurrentHashMap<String, Incoming>()
 
+    /** The fast raw-stream path; big files are handed off to it when a peer key/IP is available. */
+    var stream: FileStreamFeature? = null
+
     /** One in-progress incoming transfer. Writes to Downloads via a MediaStore URI (Q+) or a file. */
     private class Incoming(
         val transferId: String,
@@ -71,6 +74,14 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
             try {
                 name = queryName(uri)
                 val size = querySize(uri)
+
+                // Big files take the fast raw-stream path when we can reach the peer directly.
+                val s = stream
+                if (s != null && size >= STREAM_THRESHOLD && s.canStream(deviceId)) {
+                    s.sendFile(deviceId, uri, name, size)
+                    return@launch
+                }
+
                 val id = UUID.randomUUID().toString().replace("-", "")
                 transferId = id
                 log.i("Sending $name ($size bytes) to $deviceId")
@@ -306,5 +317,6 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
 
     private companion object {
         const val CHANNEL_ID = "conduit_files"
+        const val STREAM_THRESHOLD = 1 * 1024 * 1024L // files >= 1 MB use the fast raw-stream path
     }
 }

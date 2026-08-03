@@ -307,6 +307,22 @@ public sealed class ConduitNode : IAsyncDisposable
 
     public bool IsConnected(string deviceId) => _peers.ContainsKey(deviceId);
 
+    /// <summary>The last-known IP of a device, for opening a side channel (e.g. the file stream).</summary>
+    public string? IpFor(string deviceId) =>
+        _known.TryGetValue(deviceId, out var d) ? d.IpAddress : null;
+
+    /// <summary>
+    /// The AES-256 session key shared with a paired peer, derived from its stored public key.
+    /// It's deterministic (ECDH), so the file-stream side channel can encrypt with the same key
+    /// the main session uses, without holding a reference to the live connection.
+    /// </summary>
+    public byte[]? SessionKeyFor(string deviceId)
+    {
+        var pub = _store.GetPaired(deviceId)?.PublicKey;
+        if (string.IsNullOrEmpty(pub)) return null;
+        try { return _crypto.DeriveSessionKey(pub); } catch { return null; }
+    }
+
     /// <summary>
     /// Drop the live session with a device and stop auto-reconnecting to it until the user
     /// explicitly connects again (or the app restarts).

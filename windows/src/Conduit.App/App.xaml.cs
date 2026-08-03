@@ -88,16 +88,20 @@ public partial class App : Application
             var power = new PowerService();
             // "Find my PC" from the phone: beep (in the service) and pop the window to the front.
             power.FindMyPcRequested += () => Dispatcher.Invoke(ShowWindow);
-            var files = new FileTransferService(_node, _store.Config.DownloadFolder);
-            files.FileReceived += (_, path) =>
+            void OnFileReceived(object? _, string path)
             {
                 _tray!.BalloonTipTitle = "File received";
                 _tray.BalloonTipText = path;
                 _tray.ShowBalloonTip(4000);
-            };
+            }
+            var files = new FileTransferService(_node, _store.Config.DownloadFolder);
+            files.FileReceived += OnFileReceived;
+            var fileStream = new FileStreamService(_node, _store.Config.DownloadFolder);
+            fileStream.FileReceived += OnFileReceived;
+            fileStream.Start();
             var fileSearch = new FileSearchService();
 
-            Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, fileSearch, Notifications);
+            Coordinator = new FeatureCoordinator(_node, clipboard, media, power, files, fileStream, fileSearch, Notifications);
             Webcam = new WebcamService();
             ScreenMirror = new ScreenMirrorService();
 

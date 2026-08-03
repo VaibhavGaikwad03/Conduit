@@ -11,6 +11,7 @@ Both implementations MUST stay in sync with it.
 | Session / features  | 5462 | TCP |
 | Webcam video stream | 5463 | TCP (H.264) |
 | Screen mirror stream| 5464 | TCP (H.264) |
+| File stream (big files) | 5465 | TCP (raw, AES-256-GCM blocks) |
 
 ## 1. Discovery (UDP 5461)
 
@@ -71,7 +72,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `ping`                | both             | `{}` |
 | `pong`                | both             | `{}` |
 | `clipboard`           | both             | `{ content, contentType: "text" }` |
-| `file-offer`          | both             | `{ transferId, name, size, mime }` |
+| `file-offer`          | both             | `{ transferId, name, size, mime, stream? }` — `stream:true` means the bytes come over the raw file-stream port (5465), not as `file-chunk`s |
 | `file-chunk`          | both             | `{ transferId, seq, dataB64 }` |
 | `file-complete`       | both             | `{ transferId, ok, sha256 }` |
 | `file-search`         | both             | `{ requestId, query }` — ask the peer to search its files by filename substring |
@@ -129,6 +130,29 @@ to download a file, send its token in a `file-request`. Because access is only e
 responder just handed out, a peer can never list or pull an arbitrary path. The responder also
 returns the breadcrumb `path` and the `parent` token for the folder it listed, so the requester
 stays stateless — "up" just lists `parent`, which climbs from the home folder out to the drive list.
+
+**Fast file streaming** (port 5465) is the large-file path. Base64 chunks inside the JSON session
+are fine for small files but slow for gigabytes (33% base64 overhead, a JSON packet + GCM frame per
+64 KB, heavy allocations). So for files past a size threshold the sender announces the transfer with
+a `file-offer` carrying `stream:true`, then opens a **separate raw TCP connection to the receiver's
+port 5465** and streams the bytes there. The wire format on that socket is length-prefixed frames
+(same 4-byte big-endian prefix as §2):
+
+```
+frame: "CFS1"                     (magic)
+frame: senderDeviceId             (UTF-8, plaintext — only routes the stream)
+frame: transferId                 (UTF-8, matches the file-offer)
+frame: AES-256-GCM block          (nonce||ct||tag; plaintext up to 1 MB)   ← repeated
+…
+frame: (zero length)              (end of stream)
+```
+
+The receiver binds the stream to the pending `file-offer` by `transferId` and decrypts with the
+**same per-peer session key** (ECDH → AES-256, re-derived from the peer's stored public key), so the
+fast path is just as end-to-end encrypted as the session and a stranger on the LAN can't inject
+bytes (they can't produce valid GCM blocks). No `file-chunk`/`file-complete` packets are used on this
+path — completion is the zero-length frame, and integrity is per-block GCM authentication plus the
+byte count matching the offered `size`.
 
 ## 5. Encryption
 

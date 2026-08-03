@@ -51,5 +51,8 @@ public static class ConduitPorts
 {
     public const int Udp = 5461;
     public const int Tcp = 5462;
+    public const int Webcam = 5463;
+    public const int Screen = 5464;
+    public const int FileStream = 5465; // raw, encrypted bulk file transfer (fast path for big files)
     public const int ProtocolVersion = 1;
 }

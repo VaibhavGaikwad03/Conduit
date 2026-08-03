@@ -29,5 +29,8 @@ data class PairedDevice(
 object Ports {
     const val UDP = 5461
     const val TCP = 5462
+    const val WEBCAM = 5463
+    const val SCREEN = 5464
+    const val FILE_STREAM = 5465 // raw, encrypted bulk file transfer (fast path for big files)
     const val PROTOCOL_VERSION = 1
 }

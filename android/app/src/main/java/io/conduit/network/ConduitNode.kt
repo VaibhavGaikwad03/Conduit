@@ -246,6 +246,19 @@ class ConduitNode(private val store: AppStore) {
 
     fun isConnected(deviceId: String) = peers.containsKey(deviceId)
 
+    /** The last-known IP of a device, for opening a side channel (e.g. the file stream). */
+    fun ipFor(deviceId: String): String? = known[deviceId]?.ipAddress
+
+    /**
+     * The AES-256 session key shared with a paired peer, derived from its stored public key.
+     * Deterministic (ECDH), so the file-stream side channel encrypts with the same key the main
+     * session uses, without needing the live connection.
+     */
+    fun sessionKeyFor(deviceId: String): ByteArray? {
+        val pub = store.getPaired(deviceId)?.publicKey ?: return null
+        return try { crypto.deriveSessionKey(pub) } catch (e: Exception) { null }
+    }
+
     /**
      * Drop the live session with a device and stop auto-reconnecting to it until the user
      * explicitly connects again (or the app restarts).

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json.Nodes;
 using Conduit.Core.Logging;
 using Conduit.Core.Networking;
@@ -21,9 +22,13 @@ public sealed class FeatureCoordinator
     private readonly MediaService _media;
     private readonly PowerService _power;
     private readonly FileTransferService _files;
+    private readonly FileStreamService _stream;
     private readonly FileSearchService _search;
     private readonly NotificationService _notifications;
     private readonly InputService _input = new();
+
+    // Files at least this big take the fast raw-stream path; smaller ones stay on the simple chunked path.
+    private const long StreamThreshold = 1 * 1024 * 1024;
 
     // In-flight searches we're serving for the peer, keyed by requestId, so a cancel can abort them.
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _searchCancels = new();
@@ -47,6 +52,7 @@ public sealed class FeatureCoordinator
         MediaService media,
         PowerService power,
         FileTransferService files,
+        FileStreamService stream,
         FileSearchService search,
         NotificationService notifications)
     {
@@ -55,12 +61,14 @@ public sealed class FeatureCoordinator
         _media = media;
         _power = power;
         _files = files;
+        _stream = stream;
         _search = search;
         _notifications = notifications;
 
         _node.PacketReceived += OnPacket;
         _clipboard.LocalClipboardChanged += OnLocalClipboard;
         _files.Progress += (_, p) => FileProgress?.Invoke(this, p);
+        _stream.Progress += (_, p) => FileProgress?.Invoke(this, p);
     }
 
     private void OnLocalClipboard(object? sender, string text)
@@ -98,6 +106,14 @@ public sealed class FeatureCoordinator
                     break;
 
                 case PacketType.FileOffer:
+                    // A stream offer means the bytes come over the raw fast port, not as chunks here.
+                    if (packet.GetBool("stream"))
+                        _stream.RegisterIncoming(packet.GetString("transferId") ?? "", e.Peer.DeviceId,
+                            packet.GetString("name") ?? "conduit-file", packet.GetLong("size"));
+                    else
+                        _files.HandlePacket(packet);
+                    break;
+
                 case PacketType.FileChunk:
                 case PacketType.FileComplete:
                     _files.HandlePacket(packet);
@@ -118,7 +134,7 @@ public sealed class FeatureCoordinator
                 case PacketType.FileRequest:
                 {
                     var path = _search.Resolve(packet.GetString("id") ?? "");
-                    if (path is not null) _ = _files.SendFileAsync(e.Peer.DeviceId, path);
+                    if (path is not null) _ = SendFileAsync(e.Peer.DeviceId, path);
                     else _log.Warning("file-request for unknown id ignored");
                     break;
                 }
@@ -175,7 +191,17 @@ public sealed class FeatureCoordinator
 
     // ---- Outgoing convenience helpers (called from the UI) --------------------
 
-    public Task SendFileAsync(string deviceId, string path) => _files.SendFileAsync(deviceId, path);
+    /// <summary>Sends a file, choosing the fast raw-stream path for big files and chunks for small ones.</summary>
+    public Task SendFileAsync(string deviceId, string path)
+    {
+        try
+        {
+            if (new FileInfo(path).Length >= StreamThreshold)
+                return _stream.SendFileAsync(deviceId, path);
+        }
+        catch { /* fall through to the chunked path */ }
+        return _files.SendFileAsync(deviceId, path);
+    }
 
     public Task SendClipboardAsync(string deviceId, string text) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.Clipboard, b =>
