@@ -125,6 +125,16 @@ public sealed class FileTransferService
             _log.Error(ex, "Failed sending {Name}", info.Name);
             progress.Failed = true;
             Report(progress);
+            // Tell the receiver we failed (e.g. a locked/unreadable file) so it doesn't hang at 0%.
+            try
+            {
+                await _node.SendToAsync(deviceId, Packet.Create(PacketType.FileComplete, b =>
+                {
+                    b["transferId"] = transferId;
+                    b["ok"] = false;
+                }));
+            }
+            catch { /* peer may be gone; nothing more we can do */ }
         }
     }
 
@@ -194,6 +204,20 @@ public sealed class FileTransferService
     {
         string transferId = packet.GetString("transferId") ?? "";
         if (!_incoming.TryRemove(transferId, out var inc)) return;
+
+        // The sender couldn't read the file (e.g. a locked file) — clean up and fail, don't hang at 0%.
+        if (!packet.GetBool("ok", true))
+        {
+            inc.Stream.Dispose();
+            try { File.Delete(inc.Path); } catch { /* best effort */ }
+            _log.Warning("Sender reported failure for {Name}", inc.Name);
+            Report(new TransferProgress
+            {
+                Id = inc.TransferId, Name = inc.Name, IsSending = false,
+                Transferred = inc.Received, Total = inc.Size, Done = true, Failed = true
+            });
+            return;
+        }
 
         inc.Stream.Flush();
         inc.Stream.Dispose();

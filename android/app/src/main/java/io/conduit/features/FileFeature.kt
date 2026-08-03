@@ -66,50 +66,66 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
 
     fun sendFile(deviceId: String, uri: Uri) {
         scope.launch {
+            var transferId: String? = null
+            var name = "file"
             try {
-                val name = queryName(uri)
+                name = queryName(uri)
                 val size = querySize(uri)
-                val transferId = UUID.randomUUID().toString().replace("-", "")
+                val id = UUID.randomUUID().toString().replace("-", "")
+                transferId = id
                 log.i("Sending $name ($size bytes) to $deviceId")
-                ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, 0, size))
+                ConduitRuntime.upsertTransfer(TransferUi(id, name, sending = true, 0, size))
 
                 node.sendTo(deviceId, Packet.create(PacketType.FILE_OFFER) {
-                    put("transferId", transferId); put("name", name)
+                    put("transferId", id); put("name", name)
                     put("size", size); put("mime", "application/octet-stream")
                 })
 
                 val sha = MessageDigest.getInstance("SHA-256")
                 var sent = 0L
                 var lastPercent = -1
-                context.contentResolver.openInputStream(uri)?.use { input ->
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: throw IOException("Can't open $uri")
+                input.use { stream ->
                     val buffer = ByteArray(64 * 1024)
                     var seq = 0
                     while (true) {
-                        val read = input.read(buffer)
+                        val read = stream.read(buffer)
                         if (read <= 0) break
                         sha.update(buffer, 0, read)
                         val b64 = Base64.encodeToString(buffer.copyOf(read), Base64.NO_WRAP)
                         val thisSeq = seq++
                         node.sendTo(deviceId, Packet.create(PacketType.FILE_CHUNK) {
-                            put("transferId", transferId); put("seq", thisSeq); put("dataB64", b64)
+                            put("transferId", id); put("seq", thisSeq); put("dataB64", b64)
                         })
                         sent += read
                         val pct = if (size > 0) ((sent * 100) / size).toInt() else 0
                         if (pct != lastPercent) {
                             lastPercent = pct
-                            ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, sent, size))
+                            ConduitRuntime.upsertTransfer(TransferUi(id, name, sending = true, sent, size))
                         }
                     }
                 }
                 val hash = sha.digest().joinToString("") { "%02x".format(it) }
                 node.sendTo(deviceId, Packet.create(PacketType.FILE_COMPLETE) {
-                    put("transferId", transferId); put("ok", true); put("sha256", hash)
+                    put("transferId", id); put("ok", true); put("sha256", hash)
                 })
-                ConduitRuntime.upsertTransfer(TransferUi(transferId, name, sending = true, size, size, done = true))
-                autoRemove(transferId)
+                ConduitRuntime.upsertTransfer(TransferUi(id, name, sending = true, size, size, done = true))
+                autoRemove(id)
                 log.i("Finished sending $name")
             } catch (e: Exception) {
                 log.e(e, "Failed to send file")
+                val id = transferId
+                if (id != null) {
+                    // Tell the receiver we failed so it doesn't hang at 0%.
+                    try {
+                        node.sendTo(deviceId, Packet.create(PacketType.FILE_COMPLETE) {
+                            put("transferId", id); put("ok", false)
+                        })
+                    } catch (_: Exception) {}
+                    ConduitRuntime.upsertTransfer(TransferUi(id, name, sending = true, 0, 0, failed = true))
+                    autoRemove(id)
+                }
             }
         }
     }
@@ -181,6 +197,24 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
     private fun complete(packet: Packet) {
         val transferId = packet.getString("transferId") ?: return
         val inc = incoming.remove(transferId) ?: return
+
+        // The sender couldn't read the file (e.g. a locked system file) — clean up and fail, so the
+        // receiver never hangs at "Receiving 0%".
+        if (!packet.getBool("ok", true)) {
+            try { inc.out.close() } catch (_: Exception) {}
+            try {
+                if (inc.uri != null) context.contentResolver.delete(inc.uri, null, null)
+                else inc.legacyFile?.delete()
+            } catch (_: Exception) {}
+            log.w("Sender reported failure for ${inc.displayName}")
+            ConduitRuntime.upsertTransfer(
+                TransferUi(inc.transferId, inc.displayName, sending = false, inc.received, inc.total, failed = true),
+            )
+            ConduitRuntime.lastEvent.value = "Couldn't download ${inc.displayName}"
+            autoRemove(inc.transferId)
+            return
+        }
+
         try {
             inc.out.flush()
             inc.out.close()
