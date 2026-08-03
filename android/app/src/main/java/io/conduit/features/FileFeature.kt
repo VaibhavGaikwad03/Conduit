@@ -197,6 +197,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
             ConduitRuntime.upsertTransfer(
                 TransferUi(inc.transferId, inc.displayName, sending = false, inc.total, inc.total, done = true),
             )
+            ConduitRuntime.lastEvent.value = "Saved ${inc.displayName} to Downloads"
             autoRemove(inc.transferId)
             notifyReceived(inc.displayName)
         } catch (e: Exception) {
@@ -204,6 +205,7 @@ class FileFeature(private val context: Context, private val node: ConduitNode) {
             ConduitRuntime.upsertTransfer(
                 TransferUi(inc.transferId, inc.displayName, sending = false, inc.received, inc.total, failed = true),
             )
+            ConduitRuntime.lastEvent.value = "Couldn't save ${inc.displayName}"
             autoRemove(inc.transferId)
         }
     }
