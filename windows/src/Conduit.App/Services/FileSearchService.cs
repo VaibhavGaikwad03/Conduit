@@ -121,16 +121,33 @@ public sealed class FileSearchService
         return new Listing(Path.GetFileName(dir), entries, null);
     }
 
-    /// <summary>The top-level roots: the user folders, each a descendable directory token.</summary>
+    /// <summary>The top-level roots: every ready drive (C:\, D:\, …), each a descendable token.</summary>
     private Listing ListRoots()
     {
         var entries = new List<Entry>();
-        foreach (var root in Roots)
+        foreach (var drive in DriveInfo.GetDrives())
         {
-            if (!Directory.Exists(root)) continue;
-            entries.Add(new Entry(RegisterDir(root), Path.GetFileName(root), true, 0, ""));
+            try
+            {
+                if (!drive.IsReady) continue; // skip empty CD/card readers, disconnected network drives
+                entries.Add(new Entry(RegisterDir(drive.RootDirectory.FullName), DriveLabel(drive), true, 0, ""));
+            }
+            catch { /* a drive we can't query — skip it */ }
         }
-        return new Listing("This PC", entries, null);
+        return new Listing("This PC", entries, entries.Count == 0 ? "No drives available." : null);
+    }
+
+    /// <summary>A friendly drive name like "Local Disk (C:)" or "MyUSB (E:)".</summary>
+    private static string DriveLabel(DriveInfo d)
+    {
+        var letter = d.Name.TrimEnd('\\', '/'); // "C:"
+        string label;
+        try { label = d.VolumeLabel; } catch { label = ""; }
+        if (string.IsNullOrWhiteSpace(label))
+            label = d.DriveType == DriveType.Removable ? "Removable Disk"
+                  : d.DriveType == DriveType.Network ? "Network Drive"
+                  : "Local Disk";
+        return $"{label} ({letter})";
     }
 
     /// <summary>Enumerates paths sorted by name, or an empty list if the folder can't be read.</summary>

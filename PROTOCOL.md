@@ -120,8 +120,8 @@ briefly; a `file-request` is honored only for a token from a recent result, so a
 pull an arbitrary path. Downloads reuse the normal `file-offer`/`file-chunk`/`file-complete` flow.
 
 **Remote file browser** (`dir-list`) walks the *other* device's folders one level at a time. A
-`dir-list` with an empty `token` returns the top-level **roots** (Windows: the user folders;
-Android: internal storage, or the readable public folders). Every entry the responder returns —
+`dir-list` with an empty `token` returns the top-level **roots** (Windows: every ready drive — C:,
+D:, …; Android: internal storage, or the readable public folders). Every entry the responder returns —
 folder or file — carries its own **opaque token**, mapped briefly to a local path the same way
 search tokens are. To open a folder, send its token back in another `dir-list`; to download a
 file, send its token in a `file-request`. Because access is only ever by a token the responder
