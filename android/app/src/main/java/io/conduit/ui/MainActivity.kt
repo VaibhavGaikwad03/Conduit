@@ -1186,6 +1186,7 @@ private fun FileBrowseCard(
     val path by ConduitRuntime.browsePath.collectAsState()
     val active by ConduitRuntime.browseActive.collectAsState()
     val canGoUp by ConduitRuntime.browseCanGoUp.collectAsState()
+    val transfers by ConduitRuntime.transfers.collectAsState()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Card),
@@ -1212,7 +1213,12 @@ private fun FileBrowseCard(
                     TextButton(onClick = { ConduitRuntime.closeBrowse() }) { Text("✕", color = TextHi) }
                 }
                 StatusLine(status)
-                entries.forEach { BrowseEntryItem(it, onEnter, onDownload) }
+                entries.forEach { entry ->
+                    // Match an in-flight incoming transfer to its row by file name, so the row
+                    // shows a live progress bar in place of the Get button while it downloads.
+                    val xfer = transfers.firstOrNull { !it.sending && it.name == entry.name }
+                    BrowseEntryItem(entry, xfer, onEnter, onDownload)
+                }
             }
         }
     }
@@ -1221,9 +1227,11 @@ private fun FileBrowseCard(
 @Composable
 private fun BrowseEntryItem(
     e: BrowseEntryUi,
+    xfer: TransferUi?,
     onEnter: (BrowseEntryUi) -> Unit,
     onDownload: (BrowseEntryUi) -> Unit,
 ) {
+    val downloading = xfer != null && !xfer.done && !xfer.failed
     Row(
         Modifier
             .fillMaxWidth()
@@ -1239,10 +1247,27 @@ private fun BrowseEntryItem(
             )
             Text(if (e.isDir) "Folder" else formatSize(e.size), color = TextMuted, fontSize = 11.sp)
         }
-        if (e.isDir) {
-            Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        } else {
-            OutlinedButton(
+        when {
+            e.isDir -> Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            downloading -> Column(
+                Modifier.width(96.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                Text("Receiving · ${xfer!!.percent}%", color = Cyan, fontSize = 11.sp)
+                LinearProgressIndicator(
+                    progress = { xfer.percent / 100f },
+                    color = Cyan,
+                    trackColor = Stroke,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 5.dp)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                )
+            }
+            xfer?.done == true -> Text("Saved ✓", color = Success, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            xfer?.failed == true -> Text("Failed", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+            else -> OutlinedButton(
                 onClick = { onDownload(e) },
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.height(40.dp),
