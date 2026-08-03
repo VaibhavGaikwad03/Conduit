@@ -85,6 +85,7 @@ import io.conduit.model.DeviceInfo
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
 import io.conduit.runtime.ConduitRuntime
+import io.conduit.runtime.BrowseEntryUi
 import io.conduit.runtime.SearchResultUi
 import io.conduit.runtime.TransferUi
 import io.conduit.service.ConduitService
@@ -286,6 +287,38 @@ private fun ConduitScreen(
             if (ok) "Requesting ${result.name}…" else "Not connected"
     }
 
+    // ---- Remote file browser (this phone browsing the PC's folders) ----
+
+    fun sendDirList(device: DeviceInfo, requestId: String, token: String) {
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.DIR_LIST) {
+                put("requestId", requestId)
+                put("token", token)
+            },
+        ) ?: false
+        if (!ok) ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
+    }
+
+    fun browsePc(device: DeviceInfo) = sendDirList(device, ConduitRuntime.startBrowse(), "")
+
+    fun enterBrowseFolder(device: DeviceInfo, entry: BrowseEntryUi) =
+        sendDirList(device, ConduitRuntime.enterFolder(entry.token, entry.name), entry.token)
+
+    fun browseUpOnPc(device: DeviceInfo) {
+        val (requestId, token) = ConduitRuntime.browseUp()
+        sendDirList(device, requestId, token)
+    }
+
+    fun downloadBrowseFile(device: DeviceInfo, entry: BrowseEntryUi) {
+        val ok = ConduitRuntime.node?.sendTo(
+            device.deviceId,
+            Packet.create(PacketType.FILE_REQUEST) { put("id", entry.token) },
+        ) ?: false
+        ConduitRuntime.lastEvent.value =
+            if (ok) "Requesting ${entry.name}…" else "Not connected"
+    }
+
     fun openLinkOnPc(device: DeviceInfo, url: String) {
         val u = url.trim()
         if (u.isEmpty()) return
@@ -363,6 +396,10 @@ private fun ConduitScreen(
                 onPcInput = { build -> openDevice?.let { sendPcInput(it, build) } },
                 onSearch = { query -> openDevice?.let { searchFiles(it, query) } },
                 onDownload = { result -> downloadResult(result) },
+                onBrowse = { openDevice?.let { browsePc(it) } },
+                onBrowseEnter = { entry -> openDevice?.let { enterBrowseFolder(it, entry) } },
+                onBrowseUp = { openDevice?.let { browseUpOnPc(it) } },
+                onBrowseDownload = { entry -> openDevice?.let { downloadBrowseFile(it, entry) } },
                 onOpenLink = { url -> openDevice?.let { openLinkOnPc(it, url) } },
                 onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
                 onDisconnect = { openDevice?.let { disconnect(it) } },
@@ -596,6 +633,10 @@ private fun MainContent(
     onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
+    onBrowse: () -> Unit,
+    onBrowseEnter: (BrowseEntryUi) -> Unit,
+    onBrowseUp: () -> Unit,
+    onBrowseDownload: (BrowseEntryUi) -> Unit,
     onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -661,6 +702,10 @@ private fun MainContent(
                     onPcInput = onPcInput,
                     onSearch = onSearch,
                     onDownload = onDownload,
+                    onBrowse = onBrowse,
+                    onBrowseEnter = onBrowseEnter,
+                    onBrowseUp = onBrowseUp,
+                    onBrowseDownload = onBrowseDownload,
                     onOpenLink = onOpenLink,
                     onPairOrConnect = onPairOrConnect,
                     onDisconnect = onDisconnect,
@@ -717,6 +762,10 @@ private fun DeviceDetail(
     onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
+    onBrowse: () -> Unit,
+    onBrowseEnter: (BrowseEntryUi) -> Unit,
+    onBrowseUp: () -> Unit,
+    onBrowseDownload: (BrowseEntryUi) -> Unit,
     onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
@@ -760,6 +809,9 @@ private fun DeviceDetail(
         Spacer(Modifier.height(20.dp))
         SectionLabel("SEARCH FILES ON PC")
         FileSearchCard(onSearch, onDownload)
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("BROWSE FILES ON PC")
+        FileBrowseCard(onBrowse, onBrowseEnter, onBrowseUp, onBrowseDownload)
         Spacer(Modifier.height(20.dp))
         SectionLabel("TOUCHPAD")
         TouchpadCard(onPcInput)
@@ -1119,6 +1171,83 @@ private fun SearchResultItem(r: SearchResultUi, onDownload: (SearchResultUi) -> 
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.height(40.dp),
         ) { Text("⬇  Get", color = TextHi, fontWeight = FontWeight.SemiBold) }
+    }
+}
+
+@Composable
+private fun FileBrowseCard(
+    onBrowse: () -> Unit,
+    onEnter: (BrowseEntryUi) -> Unit,
+    onUp: () -> Unit,
+    onDownload: (BrowseEntryUi) -> Unit,
+) {
+    val entries by ConduitRuntime.browseEntries.collectAsState()
+    val status by ConduitRuntime.browseStatus.collectAsState()
+    val path by ConduitRuntime.browsePath.collectAsState()
+    val active by ConduitRuntime.browseActive.collectAsState()
+    val canGoUp by ConduitRuntime.browseCanGoUp.collectAsState()
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Card),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            if (!active) {
+                StatusLine("Open the PC's folders and pull any file across.")
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onBrowse,
+                    colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) { Text("📂  Browse", fontWeight = FontWeight.SemiBold) }
+            } else {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        path, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    )
+                    if (canGoUp) TextButton(onClick = onUp) { Text("⬆  Up", color = TextHi) }
+                    TextButton(onClick = { ConduitRuntime.closeBrowse() }) { Text("✕", color = TextHi) }
+                }
+                StatusLine(status)
+                entries.forEach { BrowseEntryItem(it, onEnter, onDownload) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowseEntryItem(
+    e: BrowseEntryUi,
+    onEnter: (BrowseEntryUi) -> Unit,
+    onDownload: (BrowseEntryUi) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = e.isDir) { onEnter(e) }
+            .padding(top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(if (e.isDir) "📁" else "📄", fontSize = 18.sp)
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)) {
+            Text(
+                e.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Text(if (e.isDir) "Folder" else formatSize(e.size), color = TextMuted, fontSize = 11.sp)
+        }
+        if (e.isDir) {
+            Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        } else {
+            OutlinedButton(
+                onClick = { onDownload(e) },
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.height(40.dp),
+            ) { Text("⬇  Get", color = TextHi, fontWeight = FontWeight.SemiBold) }
+        }
     }
 }
 

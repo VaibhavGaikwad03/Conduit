@@ -77,7 +77,9 @@ Every decrypted payload is a JSON object with this envelope:
 | `file-search`         | both             | `{ requestId, query }` — ask the peer to search its files by filename substring |
 | `file-search-result`  | both             | `{ requestId, truncated, results: [{ id, name, size, folder, mime }] }` — reply to `file-search` |
 | `file-search-cancel`  | both             | `{ requestId }` — ask the peer to stop the search with this id; it aborts the in-flight walk and sends no result |
-| `file-request`        | both             | `{ id }` — ask the peer to send a file it returned in a `file-search-result` (streamed via `file-offer`/`file-chunk`/`file-complete`) |
+| `file-request`        | both             | `{ id }` — ask the peer to send a file it returned in a `file-search-result` or `dir-list-result` (streamed via `file-offer`/`file-chunk`/`file-complete`) |
+| `dir-list`            | both             | `{ requestId, token }` — ask the peer to list a directory. Empty/absent `token` lists the top-level roots |
+| `dir-list-result`     | both             | `{ requestId, token, name, error?, entries: [{ name, isDir, token, size, mime }] }` — reply to `dir-list`; each entry's `token` descends (folders) or downloads (files) |
 | `open-link`           | both             | `{ url }` — open this URL in the peer's default browser (only `http`/`https` are honored) |
 | `notification`        | android → win    | `{ key, appName, title, text, iconB64?, canReply, actions:[] }` |
 | `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
@@ -116,6 +118,15 @@ via an Accessibility Service the user enables once; if it isn't enabled, the pho
 result `id` is an **opaque random token** the responder maps to a local path/URI and remembers
 briefly; a `file-request` is honored only for a token from a recent result, so a peer can never
 pull an arbitrary path. Downloads reuse the normal `file-offer`/`file-chunk`/`file-complete` flow.
+
+**Remote file browser** (`dir-list`) walks the *other* device's folders one level at a time. A
+`dir-list` with an empty `token` returns the top-level **roots** (Windows: the user folders;
+Android: internal storage, or the readable public folders). Every entry the responder returns —
+folder or file — carries its own **opaque token**, mapped briefly to a local path the same way
+search tokens are. To open a folder, send its token back in another `dir-list`; to download a
+file, send its token in a `file-request`. Because access is only ever by a token the responder
+just handed out, a peer can never list or pull an arbitrary path. The requester keeps a small
+stack of the tokens it descended through, so navigating "up" just re-lists a parent token.
 
 ## 5. Encryption
 

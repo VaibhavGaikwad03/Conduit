@@ -195,6 +195,38 @@ public partial class MainWindow : Window
         await _coordinator.SendFileRequestAsync(d.DeviceId, row.Id);
     }
 
+    private async void OnBrowseFiles(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        var requestId = _vm.StartBrowse();
+        await _coordinator.SendDirListAsync(d.DeviceId, requestId, ""); // empty token = list the roots
+    }
+
+    // Open a folder or download a file, depending on the entry the user tapped.
+    private async void OnBrowseEntry(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: BrowseRow row }) return;
+        if (TargetDevice() is not { } d) return;
+        if (row.IsDir)
+        {
+            var requestId = _vm.EnterFolder(row.Token, row.Name);
+            await _coordinator.SendDirListAsync(d.DeviceId, requestId, row.Token);
+        }
+        else
+        {
+            await _coordinator.SendFileRequestAsync(d.DeviceId, row.Token);
+        }
+    }
+
+    private async void OnBrowseUp(object sender, RoutedEventArgs e)
+    {
+        if (TargetDevice() is not { } d) return;
+        var (requestId, token) = _vm.GoUp();
+        await _coordinator.SendDirListAsync(d.DeviceId, requestId, token);
+    }
+
+    private void OnCloseBrowse(object sender, RoutedEventArgs e) => _vm.CloseBrowse();
+
     private async void OnLockPhone(object sender, RoutedEventArgs e)
     {
         if (TargetDevice() is { } d) await _coordinator.SendRemoteCommandAsync(d.DeviceId, "lock");

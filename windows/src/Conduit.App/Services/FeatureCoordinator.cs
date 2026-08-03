@@ -38,6 +38,9 @@ public sealed class FeatureCoordinator
     /// <summary>Results the peer returned for one of our file searches.</summary>
     public event EventHandler<FileSearchResultsEventArgs>? SearchResults;
 
+    /// <summary>A directory listing the peer returned for one of our browse requests.</summary>
+    public event EventHandler<DirListingEventArgs>? DirListing;
+
     public FeatureCoordinator(
         ConduitNode node,
         ClipboardService clipboard,
@@ -119,6 +122,14 @@ public sealed class FeatureCoordinator
                     else _log.Warning("file-request for unknown id ignored");
                     break;
                 }
+
+                case PacketType.DirList:
+                    HandleDirList(e.Peer.DeviceId, packet);
+                    break;
+
+                case PacketType.DirListResult:
+                    HandleDirListResult(e.Peer.DeviceId, packet);
+                    break;
 
                 case PacketType.OpenLink:
                     OpenLink(packet.GetString("url") ?? "");
@@ -266,6 +277,14 @@ public sealed class FeatureCoordinator
     public Task SendFileRequestAsync(string deviceId, string id) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.FileRequest, b => b["id"] = id));
 
+    /// <summary>Asks the peer to list a directory; an empty token lists its roots.</summary>
+    public Task SendDirListAsync(string deviceId, string requestId, string token) =>
+        _node.SendToAsync(deviceId, Packet.Create(PacketType.DirList, b =>
+        {
+            b["requestId"] = requestId;
+            b["token"] = token;
+        }));
+
     /// <summary>Asks the peer to open a URL in its browser.</summary>
     public Task SendOpenLinkAsync(string deviceId, string url) =>
         _node.SendToAsync(deviceId, Packet.Create(PacketType.OpenLink, b => b["url"] = url));
@@ -380,6 +399,79 @@ public sealed class FeatureCoordinator
             Truncated = packet.GetBool("truncated"),
         });
     }
+
+    // ---- Remote file browser handling -----------------------------------------
+
+    /// <summary>Peer asked us to list a folder — resolve its token and reply with the entries.</summary>
+    private void HandleDirList(string fromDeviceId, Packet packet)
+    {
+        var requestId = packet.GetString("requestId") ?? "";
+        var token = packet.GetString("token") ?? "";
+        var listing = _search.List(token);
+        _ = _node.SendToAsync(fromDeviceId, Packet.Create(PacketType.DirListResult, b =>
+        {
+            b["requestId"] = requestId;
+            b["token"] = token;
+            b["name"] = listing.Name;
+            if (listing.Error is not null) b["error"] = listing.Error;
+            var arr = new JsonArray();
+            foreach (var en in listing.Entries)
+                arr.Add(new JsonObject
+                {
+                    ["name"] = en.Name,
+                    ["isDir"] = en.IsDir,
+                    ["token"] = en.Token,
+                    ["size"] = en.Size,
+                    ["mime"] = en.Mime,
+                });
+            b["entries"] = arr;
+        }));
+    }
+
+    private void HandleDirListResult(string fromDeviceId, Packet packet)
+    {
+        var entries = new List<DirEntry>();
+        if (packet.Body["entries"] is JsonArray arr)
+        {
+            foreach (var node in arr)
+            {
+                if (node is not JsonObject o) continue;
+                try
+                {
+                    entries.Add(new DirEntry(
+                        o["token"]?.GetValue<string>() ?? "",
+                        o["name"]?.GetValue<string>() ?? "",
+                        o["isDir"]?.GetValue<bool>() ?? false,
+                        o["size"]?.GetValue<long>() ?? 0,
+                        o["mime"]?.GetValue<string>() ?? ""));
+                }
+                catch { /* skip a malformed row */ }
+            }
+        }
+        DirListing?.Invoke(this, new DirListingEventArgs
+        {
+            DeviceId = fromDeviceId,
+            RequestId = packet.GetString("requestId") ?? "",
+            Token = packet.GetString("token") ?? "",
+            Name = packet.GetString("name") ?? "",
+            Error = packet.GetString("error"),
+            Entries = entries,
+        });
+    }
+}
+
+/// <summary>One folder or file in a remote directory listing.</summary>
+public sealed record DirEntry(string Token, string Name, bool IsDir, long Size, string Mime);
+
+/// <summary>A directory listing the peer returned, raised for the UI.</summary>
+public sealed class DirListingEventArgs : EventArgs
+{
+    public required string DeviceId { get; init; }
+    public string RequestId { get; init; } = "";
+    public string Token { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string? Error { get; init; }
+    public required IReadOnlyList<DirEntry> Entries { get; init; }
 }
 
 /// <summary>Search results the peer returned, raised for the UI.</summary>

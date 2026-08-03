@@ -14,14 +14,24 @@ public sealed class FileSearchService
 {
     public sealed record Result(string Id, string Name, long Size, string Folder, string Mime);
 
+    /// <summary>One row in a directory listing: a folder or a file, each with a download/descend token.</summary>
+    public sealed record Entry(string Token, string Name, bool IsDir, long Size, string Mime);
+
+    /// <summary>A listed directory: its display name and its immediate children (folders first).</summary>
+    public sealed record Listing(string Name, IReadOnlyList<Entry> Entries, string? Error);
+
     private const int MaxResults = 100;   // cap work + payload
     private const int MaxTokens = 1000;   // bounded id → path memory
+    private const int MaxDirTokens = 4000; // dir tokens: enough to keep a deep browse stack valid
+    private const int MaxEntries = 5000;  // cap a single huge directory's payload
     private const int MinQueryLen = 2;
 
     private readonly ILogger _log = ConduitLog.For("FileSearch");
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _tokens = new();
     private readonly Queue<string> _tokenOrder = new();
+    private readonly Dictionary<string, string> _dirTokens = new();
+    private readonly Queue<string> _dirTokenOrder = new();
 
     // The user folders we search — where personal files actually live (not system/program dirs).
     private static readonly string[] Roots = BuildRoots();
@@ -64,6 +74,102 @@ public sealed class FileSearchService
     public string? Resolve(string id)
     {
         lock (_gate) return _tokens.TryGetValue(id, out var path) ? path : null;
+    }
+
+    // ---- Directory browsing ----------------------------------------------------
+
+    /// <summary>
+    /// Lists a directory one level deep. An empty <paramref name="token"/> returns the top-level
+    /// roots (the user folders); otherwise it lists the folder that token was handed out for. Each
+    /// child is registered under a fresh token — folders for <see cref="List"/>, files for download —
+    /// so the peer can only ever descend or pull something we just offered.
+    /// </summary>
+    public Listing List(string? token)
+    {
+        token = (token ?? "").Trim();
+        if (token.Length == 0) return ListRoots();
+
+        var dir = ResolveDir(token);
+        if (dir is null || !Directory.Exists(dir))
+            return new Listing("", Array.Empty<Entry>(), "That folder is no longer available.");
+
+        var entries = new List<Entry>();
+        try
+        {
+            foreach (var sub in SortedOrEmpty(() => Directory.GetDirectories(dir)))
+            {
+                if (entries.Count >= MaxEntries) break;
+                entries.Add(new Entry(RegisterDir(sub), Path.GetFileName(sub), true, 0, ""));
+            }
+            foreach (var file in SortedOrEmpty(() => Directory.GetFiles(dir)))
+            {
+                if (entries.Count >= MaxEntries) break;
+                long size;
+                try { size = new FileInfo(file).Length; }
+                catch { continue; } // vanished or unreadable between listing and stat
+                var name = Path.GetFileName(file);
+                entries.Add(new Entry(Register(file), name, false, size, MimeFor(name)));
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.Warning(ex, "Failed to list {Dir}", dir);
+            return new Listing(Path.GetFileName(dir), entries, "Couldn't read that folder.");
+        }
+
+        _log.Information("Listed {Dir} -> {Count} entr(ies)", dir, entries.Count);
+        return new Listing(Path.GetFileName(dir), entries, null);
+    }
+
+    /// <summary>The top-level roots: the user folders, each a descendable directory token.</summary>
+    private Listing ListRoots()
+    {
+        var entries = new List<Entry>();
+        foreach (var root in Roots)
+        {
+            if (!Directory.Exists(root)) continue;
+            entries.Add(new Entry(RegisterDir(root), Path.GetFileName(root), true, 0, ""));
+        }
+        return new Listing("This PC", entries, null);
+    }
+
+    /// <summary>Enumerates paths sorted by name, or an empty list if the folder can't be read.</summary>
+    private static IReadOnlyList<string> SortedOrEmpty(Func<string[]> get)
+    {
+        try
+        {
+            var arr = get();
+            Array.Sort(arr, (a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b),
+                StringComparison.OrdinalIgnoreCase));
+            return arr;
+        }
+        catch { return Array.Empty<string>(); }
+    }
+
+    private string? ResolveDir(string token)
+    {
+        lock (_gate) return _dirTokens.TryGetValue(token, out var path) ? path : null;
+    }
+
+    private string RegisterDir(string path)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        lock (_gate)
+        {
+            _dirTokens[id] = path;
+            _dirTokenOrder.Enqueue(id);
+            while (_dirTokenOrder.Count > MaxDirTokens)
+                _dirTokens.Remove(_dirTokenOrder.Dequeue());
+        }
+        return id;
+    }
+
+    /// <summary>Registers a file under a fresh token and returns it.</summary>
+    private string Register(string path)
+    {
+        var id = Guid.NewGuid().ToString("N");
+        Register(id, path);
+        return id;
     }
 
     private void Register(string id, string path)

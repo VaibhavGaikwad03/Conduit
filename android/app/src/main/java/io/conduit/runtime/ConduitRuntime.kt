@@ -6,6 +6,7 @@ import io.conduit.network.ConduitNode
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.UUID
 
 /**
  * Process-wide handle the UI reads and the service populates. Keeps the Compose screens
@@ -80,6 +81,91 @@ object ConduitRuntime {
         searchPending.value = false
     }
 
+    // ---- Remote file browser (this phone browsing the PC's folders) ----
+    val browseEntries = MutableStateFlow<List<BrowseEntryUi>>(emptyList())
+    val browseStatus = MutableStateFlow("")
+    val browsePath = MutableStateFlow("")
+    val browseActive = MutableStateFlow(false)
+    val browseCanGoUp = MutableStateFlow(false)
+
+    // The folders we descended through (token, name); empty = at the roots. Guards stale replies.
+    @Volatile private var activeBrowseId: String? = null
+    private val browseStack = mutableListOf<Pair<String, String>>()
+    @Volatile private var browseRootName = "Files"
+
+    /** Opens the browser at the peer's roots; returns the request id to send with the empty token. */
+    @Synchronized
+    fun startBrowse(): String {
+        browseStack.clear()
+        val id = UUID.randomUUID().toString().replace("-", "")
+        activeBrowseId = id
+        browseActive.value = true
+        browseEntries.value = emptyList()
+        browseStatus.value = "Loading…"
+        browseCanGoUp.value = false
+        updateBrowsePath()
+        return id
+    }
+
+    /** Descends into a folder; returns the request id to send with [token]. */
+    @Synchronized
+    fun enterFolder(token: String, name: String): String {
+        browseStack.add(token to name)
+        val id = UUID.randomUUID().toString().replace("-", "")
+        activeBrowseId = id
+        browseStatus.value = "Loading…"
+        browseCanGoUp.value = true
+        updateBrowsePath()
+        return id
+    }
+
+    /** Goes up one level; returns the request id and the parent token to list ("" at the roots). */
+    @Synchronized
+    fun browseUp(): Pair<String, String> {
+        if (browseStack.isNotEmpty()) browseStack.removeAt(browseStack.size - 1)
+        val id = UUID.randomUUID().toString().replace("-", "")
+        activeBrowseId = id
+        browseStatus.value = "Loading…"
+        browseCanGoUp.value = browseStack.isNotEmpty()
+        updateBrowsePath()
+        return id to (browseStack.lastOrNull()?.first ?: "")
+    }
+
+    /** Closes the browser and clears its state. */
+    @Synchronized
+    fun closeBrowse() {
+        activeBrowseId = null
+        browseStack.clear()
+        browseActive.value = false
+        browseEntries.value = emptyList()
+        browseStatus.value = ""
+        browsePath.value = ""
+        browseCanGoUp.value = false
+    }
+
+    @Synchronized
+    fun setDirListing(requestId: String, name: String, error: String?, entries: List<BrowseEntryUi>) {
+        if (requestId != activeBrowseId) return // stale/superseded reply — ignore
+        if (browseStack.isEmpty() && name.isNotEmpty()) {
+            browseRootName = name
+            updateBrowsePath()
+        }
+        if (error != null) {
+            browseEntries.value = emptyList()
+            browseStatus.value = error
+            return
+        }
+        browseEntries.value = entries
+        val folders = entries.count { it.isDir }
+        val files = entries.size - folders
+        browseStatus.value = if (entries.isEmpty()) "Empty folder"
+        else "$folders folder${if (folders == 1) "" else "s"}, $files file${if (files == 1) "" else "s"}"
+    }
+
+    private fun updateBrowsePath() {
+        browsePath.value = browseRootName + browseStack.joinToString("") { " / " + it.second }
+    }
+
     @Synchronized
     fun upsertTransfer(t: TransferUi) {
         val list = transfers.value.toMutableList()
@@ -117,6 +203,15 @@ data class SearchResultUi(
     val folder: String,
     val mime: String,
     val deviceId: String,
+)
+
+/** One entry (folder or file) in the remote file browser. */
+data class BrowseEntryUi(
+    val token: String,
+    val name: String,
+    val isDir: Boolean,
+    val size: Long,
+    val mime: String,
 )
 
 /** One file transfer's progress, for the UI. */

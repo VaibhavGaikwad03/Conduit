@@ -19,6 +19,8 @@ public static class PacketType
     public const string FileSearchResult = "file-search-result";
     public const string FileSearchCancel = "file-search-cancel";
     public const string FileRequest = "file-request";
+    public const string DirList = "dir-list";
+    public const string DirListResult = "dir-list-result";
     public const string OpenLink = "open-link";
     public const string Notification = "notification";
     public const string NotificationAction = "notification-action";

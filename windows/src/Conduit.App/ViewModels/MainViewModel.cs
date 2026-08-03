@@ -74,6 +74,17 @@ public sealed class SearchResultRow
     public required string Detail { get; init; }   // "Folder · 1.2 MB"
 }
 
+/// <summary>One entry (folder or file) in the remote file browser.</summary>
+public sealed class BrowseRow
+{
+    public required string Token { get; init; }
+    public required string Name { get; init; }
+    public required bool IsDir { get; init; }
+    public bool IsFile => !IsDir;
+    public required string Detail { get; init; }   // "Folder" or a formatted size
+    public string Icon => IsDir ? "📁" : "📄";
+}
+
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ConduitNode _node;
@@ -83,9 +94,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<MirroredNotification> Notifications { get; } = new();
     public ObservableCollection<TransferRow> Transfers { get; } = new();
     public ObservableCollection<SearchResultRow> SearchResults { get; } = new();
+    public ObservableCollection<BrowseRow> BrowseEntries { get; } = new();
     public bool HasNotifications => Notifications.Count > 0;
     public bool HasTransfers => Transfers.Count > 0;
     public bool HasSearchResults => SearchResults.Count > 0;
+
+    // ---- Remote file browser ----
+    private bool _browseActive;
+    /// <summary>True while the browser is open — drives the browse card's expanded state.</summary>
+    public bool BrowseActive { get => _browseActive; private set => Set(ref _browseActive, value); }
+
+    /// <summary>Id of the in-flight browse request, or null once closed — used to drop stale replies.</summary>
+    public string? ActiveBrowseId { get; private set; }
+
+    private string _browseStatus = "";
+    public string BrowseStatus { get => _browseStatus; set => Set(ref _browseStatus, value); }
+
+    private string _browsePath = "";
+    /// <summary>Breadcrumb of the folder currently shown, e.g. "This PC / Documents / Work".</summary>
+    public string BrowsePath { get => _browsePath; set => Set(ref _browsePath, value); }
+
+    // The tokens+names of the folders we descended through; empty = at the roots.
+    private readonly List<(string Token, string Name)> _browseStack = new();
+    private string _browseRootName = "Files"; // the peer's name for its top level, from the roots listing
+    public bool CanGoUp => _browseStack.Count > 0;
 
     private bool _searchActive;
     /// <summary>True from when a search starts until it is closed — drives the Close button's visibility.</summary>
@@ -160,6 +192,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _coordinator.StatusChanged += (_, _) => Dispatch(UpdateStatus);
         _coordinator.FileProgress += (_, p) => Dispatch(() => OnFileProgress(p));
         _coordinator.SearchResults += (_, r) => Dispatch(() => OnSearchResults(r));
+        _coordinator.DirListing += (_, d) => Dispatch(() => OnDirListing(d));
         notifications.NotificationsChanged += (_, _) => Dispatch(() => RefreshNotifications(notifications));
 
         RefreshDevices();
@@ -232,6 +265,91 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : $"{r.Results.Count} result{(r.Results.Count == 1 ? "" : "s")}{(r.Truncated ? " (showing first 100)" : "")}";
         OnChanged(nameof(HasSearchResults));
     }
+
+    // ---- Remote file browser ---------------------------------------------------
+
+    /// <summary>Opens the browser at the peer's roots; returns the request id to send with the (empty) list.</summary>
+    public string StartBrowse()
+    {
+        _browseStack.Clear();
+        ActiveBrowseId = Guid.NewGuid().ToString("N");
+        BrowseActive = true;
+        BrowseEntries.Clear();
+        OnChanged(nameof(HasBrowseEntries));
+        BrowseStatus = "Loading…";
+        UpdateBrowsePath();
+        OnChanged(nameof(CanGoUp));
+        return ActiveBrowseId;
+    }
+
+    /// <summary>Descends into a folder; returns the request id to send with <paramref name="token"/>.</summary>
+    public string EnterFolder(string token, string name)
+    {
+        _browseStack.Add((token, name));
+        ActiveBrowseId = Guid.NewGuid().ToString("N");
+        BrowseStatus = "Loading…";
+        UpdateBrowsePath();
+        OnChanged(nameof(CanGoUp));
+        return ActiveBrowseId;
+    }
+
+    /// <summary>Goes up one level; returns the request id and the parent token to list ("" at roots).</summary>
+    public (string RequestId, string Token) GoUp()
+    {
+        if (_browseStack.Count > 0) _browseStack.RemoveAt(_browseStack.Count - 1);
+        ActiveBrowseId = Guid.NewGuid().ToString("N");
+        BrowseStatus = "Loading…";
+        UpdateBrowsePath();
+        OnChanged(nameof(CanGoUp));
+        return (ActiveBrowseId, _browseStack.Count > 0 ? _browseStack[^1].Token : "");
+    }
+
+    /// <summary>Closes the browser and clears its state.</summary>
+    public void CloseBrowse()
+    {
+        ActiveBrowseId = null;
+        BrowseActive = false;
+        _browseStack.Clear();
+        BrowseEntries.Clear();
+        OnChanged(nameof(HasBrowseEntries));
+        OnChanged(nameof(CanGoUp));
+        BrowseStatus = "";
+        BrowsePath = "";
+    }
+
+    private void OnDirListing(DirListingEventArgs d)
+    {
+        if (d.RequestId != ActiveBrowseId) return; // stale/superseded reply — ignore
+        if (_browseStack.Count == 0 && !string.IsNullOrEmpty(d.Name))
+        {
+            _browseRootName = d.Name; // the peer's label for its top level
+            UpdateBrowsePath();
+        }
+        BrowseEntries.Clear();
+        if (d.Error is not null)
+        {
+            BrowseStatus = d.Error;
+            OnChanged(nameof(HasBrowseEntries));
+            return;
+        }
+        foreach (var en in d.Entries)
+            BrowseEntries.Add(new BrowseRow
+            {
+                Token = en.Token,
+                Name = en.Name,
+                IsDir = en.IsDir,
+                Detail = en.IsDir ? "Folder" : FormatSize(en.Size),
+            });
+        int folders = d.Entries.Count(e => e.IsDir);
+        int files = d.Entries.Count - folders;
+        BrowseStatus = d.Entries.Count == 0 ? "Empty folder" : $"{folders} folder{(folders == 1 ? "" : "s")}, {files} file{(files == 1 ? "" : "s")}";
+        OnChanged(nameof(HasBrowseEntries));
+    }
+
+    private void UpdateBrowsePath() =>
+        BrowsePath = _browseRootName + string.Concat(_browseStack.Select(s => " / " + s.Name));
+
+    public bool HasBrowseEntries => BrowseEntries.Count > 0;
 
     private static string FormatSize(long bytes)
     {

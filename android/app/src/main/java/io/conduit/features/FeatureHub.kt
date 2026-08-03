@@ -8,6 +8,7 @@ import io.conduit.model.DeviceInfo
 import io.conduit.network.ConduitNode
 import io.conduit.protocol.Packet
 import io.conduit.protocol.PacketType
+import io.conduit.runtime.BrowseEntryUi
 import io.conduit.runtime.ConduitRuntime
 import io.conduit.runtime.SearchResultUi
 import kotlinx.coroutines.CoroutineScope
@@ -93,6 +94,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                     if (uri != null) files.sendFile(peer.deviceId, uri)
                     else log.w("file-request for unknown id ignored")
                 }
+                PacketType.DIR_LIST -> handleDirList(peer, packet)
+                PacketType.DIR_LIST_RESULT -> handleDirListResult(packet)
                 PacketType.OPEN_LINK -> openLink(packet.getString("url") ?: "")
                 else -> log.d("Unhandled packet type ${packet.type}")
             }
@@ -177,6 +180,55 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
             cancelledSearches.add(requestId)
             log.i("File search $requestId cancelled by peer")
         }
+    }
+
+    /** Peer asked us to list a folder — walk it off the read loop and reply with the entries. */
+    private fun handleDirList(peer: DeviceInfo, packet: Packet) {
+        val requestId = packet.getString("requestId") ?: ""
+        val token = packet.getString("token") ?: ""
+        searchScope.launch {
+            val listing = fileSearch.listDir(token)
+            node.sendTo(peer.deviceId, Packet.create(PacketType.DIR_LIST_RESULT) {
+                put("requestId", requestId)
+                put("token", token)
+                put("name", listing.name)
+                listing.error?.let { put("error", it) }
+                put("entries", JSONArray().apply {
+                    listing.entries.forEach { e ->
+                        put(JSONObject().apply {
+                            put("name", e.name); put("isDir", e.isDir)
+                            put("token", e.token); put("size", e.size); put("mime", e.mime)
+                        })
+                    }
+                })
+            })
+        }
+    }
+
+    /** Peer replied to our browse request: surface the folder listing to the UI. */
+    private fun handleDirListResult(packet: Packet) {
+        val arr = packet.body.optJSONArray("entries")
+        val list = mutableListOf<BrowseEntryUi>()
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                list.add(
+                    BrowseEntryUi(
+                        token = o.optString("token"),
+                        name = o.optString("name"),
+                        isDir = o.optBoolean("isDir"),
+                        size = o.optLong("size"),
+                        mime = o.optString("mime"),
+                    ),
+                )
+            }
+        }
+        ConduitRuntime.setDirListing(
+            requestId = packet.getString("requestId") ?: "",
+            name = packet.getString("name") ?: "",
+            error = packet.getString("error"),
+            entries = list,
+        )
     }
 
     /** Peer replied to our search: surface the matches to the UI. */

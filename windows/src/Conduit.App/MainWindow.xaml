@@ -255,6 +255,67 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Browse the phone's folders -->
+                    <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
+                            Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="BROWSE PHONE FILES" Style="{StaticResource Section}"/>
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding BrowsePath}" Foreground="{StaticResource Fg}"
+                                           FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding BrowseActive, Converter={StaticResource BoolToVis}}"/>
+                                <Button Grid.Column="1" Style="{StaticResource GhostButton}" Height="30"
+                                        Margin="8,0,0,0" Content="⬆  Up" Click="OnBrowseUp"
+                                        Visibility="{Binding CanGoUp, Converter={StaticResource BoolToVis}}"/>
+                                <Button Grid.Column="2" Style="{StaticResource GhostButton}" Height="30"
+                                        Margin="8,0,0,0" Content="✕  Close" Click="OnCloseBrowse"
+                                        Visibility="{Binding BrowseActive, Converter={StaticResource BoolToVis}}"/>
+                                <Button Grid.Column="3" Style="{StaticResource PrimaryButton}" Height="30"
+                                        Margin="8,0,0,0" Content="📂  Browse" Click="OnBrowseFiles"/>
+                            </Grid>
+                            <TextBlock Text="{Binding BrowseStatus}" Foreground="{StaticResource Muted}"
+                                       FontSize="12" Margin="2,8,0,0"
+                                       Visibility="{Binding BrowseActive, Converter={StaticResource BoolToVis}}"/>
+                            <ItemsControl ItemsSource="{Binding BrowseEntries}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#0AFFFFFF" CornerRadius="8" Padding="12,9" Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="15"
+                                                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource Fg}"
+                                                               FontWeight="SemiBold" FontSize="13"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="380"
+                                                               HorizontalAlignment="Left"/>
+                                                    <TextBlock Text="{Binding Detail}" Foreground="{StaticResource Muted}" FontSize="11"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="2" Style="{StaticResource GhostButton}" Height="30"
+                                                        Content="Open  ▸" Click="OnBrowseEntry"
+                                                        Visibility="{Binding IsDir, Converter={StaticResource BoolToVis}}"/>
+                                                <Button Grid.Column="2" Style="{StaticResource GhostButton}" Height="30"
+                                                        Content="⬇  Download" Click="OnBrowseEntry"
+                                                        Visibility="{Binding IsFile, Converter={StaticResource BoolToVis}}"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Media remote -->
                     <Border Style="{StaticResource CardBorder}" Margin="0,0,0,16"
                             Visibility="{Binding SelectedReady, Converter={StaticResource BoolToVis}}">
