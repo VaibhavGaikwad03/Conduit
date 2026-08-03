@@ -17,8 +17,12 @@ public sealed class FileSearchService
     /// <summary>One row in a directory listing: a folder or a file, each with a download/descend token.</summary>
     public sealed record Entry(string Token, string Name, bool IsDir, long Size, string Mime);
 
-    /// <summary>A listed directory: its display name and its immediate children (folders first).</summary>
-    public sealed record Listing(string Name, IReadOnlyList<Entry> Entries, string? Error);
+    /// <summary>A listed directory: its name, breadcrumb path, parent token (null at the top),
+    /// its immediate children (folders first), and an optional error.</summary>
+    public sealed record Listing(string Name, string Path, string? Parent, IReadOnlyList<Entry> Entries, string? Error);
+
+    /// <summary>Reserved token that opens the top level (the drive list). Empty token opens home.</summary>
+    public const string RootToken = "@root";
 
     private const int MaxResults = 100;   // cap work + payload
     private const int MaxTokens = 1000;   // bounded id → path memory
@@ -79,19 +83,30 @@ public sealed class FileSearchService
     // ---- Directory browsing ----------------------------------------------------
 
     /// <summary>
-    /// Lists a directory one level deep. An empty <paramref name="token"/> returns the top-level
-    /// roots (the user folders); otherwise it lists the folder that token was handed out for. Each
-    /// child is registered under a fresh token — folders for <see cref="List"/>, files for download —
-    /// so the peer can only ever descend or pull something we just offered.
+    /// Lists a directory one level deep. An empty <paramref name="token"/> opens the default
+    /// landing folder (the user's home folder); <c>"@root"</c> opens the top level (every drive);
+    /// otherwise it lists the folder that token was handed out for. Each child is registered under
+    /// a fresh token — folders for <see cref="List"/>, files for download — so the peer can only
+    /// ever descend or pull something we just offered. The reply also carries the breadcrumb path
+    /// and the parent token, so the requester can navigate "up" without tracking any state.
     /// </summary>
     public Listing List(string? token)
     {
         token = (token ?? "").Trim();
-        if (token.Length == 0) return ListRoots();
+        if (token.Length == 0) return ListDir(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        if (token == RootToken) return ListRoots();
 
         var dir = ResolveDir(token);
         if (dir is null || !Directory.Exists(dir))
-            return new Listing("", Array.Empty<Entry>(), "That folder is no longer available.");
+            return new Listing("", "", RootToken, Array.Empty<Entry>(), "That folder is no longer available.");
+        return ListDir(dir);
+    }
+
+    /// <summary>Lists one real directory, computing its breadcrumb and the token to go up.</summary>
+    private Listing ListDir(string dir)
+    {
+        if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            return new Listing("", "This PC", RootToken, Array.Empty<Entry>(), "That folder is no longer available.");
 
         var entries = new List<Entry>();
         try
@@ -114,14 +129,14 @@ public sealed class FileSearchService
         catch (Exception ex)
         {
             _log.Warning(ex, "Failed to list {Dir}", dir);
-            return new Listing(Path.GetFileName(dir), entries, "Couldn't read that folder.");
+            return new Listing(DirName(dir), Breadcrumb(dir), ParentToken(dir), entries, "Couldn't read that folder.");
         }
 
         _log.Information("Listed {Dir} -> {Count} entr(ies)", dir, entries.Count);
-        return new Listing(Path.GetFileName(dir), entries, null);
+        return new Listing(DirName(dir), Breadcrumb(dir), ParentToken(dir), entries, null);
     }
 
-    /// <summary>The top-level roots: every ready drive (C:\, D:\, …), each a descendable token.</summary>
+    /// <summary>The top-level: every ready drive (C:\, D:\, …), each a descendable token.</summary>
     private Listing ListRoots()
     {
         var entries = new List<Entry>();
@@ -134,7 +149,38 @@ public sealed class FileSearchService
             }
             catch { /* a drive we can't query — skip it */ }
         }
-        return new Listing("This PC", entries, entries.Count == 0 ? "No drives available." : null);
+        // At the very top there is no parent to go up to.
+        return new Listing("This PC", "This PC", null, entries, entries.Count == 0 ? "No drives available." : null);
+    }
+
+    /// <summary>The token to list <paramref name="dir"/>'s parent, or "@root" (This PC) at a drive root.</summary>
+    private string ParentToken(string dir)
+    {
+        var parent = Directory.GetParent(dir);
+        return parent is null ? RootToken : RegisterDir(parent.FullName);
+    }
+
+    /// <summary>A display name for a folder — the drive label at a drive root, else the folder name.</summary>
+    private static string DirName(string dir)
+    {
+        var name = Path.GetFileName(dir.TrimEnd('\\', '/'));
+        if (!string.IsNullOrEmpty(name)) return name;
+        try { return DriveLabel(new DriveInfo(dir)); } catch { return dir; }
+    }
+
+    /// <summary>Builds the "This PC / Local Disk (C:) / Users / …" breadcrumb for a full path.</summary>
+    private static string Breadcrumb(string dir)
+    {
+        var root = Path.GetPathRoot(dir);
+        if (string.IsNullOrEmpty(root)) return "This PC / " + dir;
+        string driveLabel;
+        try { driveLabel = DriveLabel(new DriveInfo(root)); } catch { driveLabel = root.TrimEnd('\\', '/'); }
+        var crumb = "This PC / " + driveLabel;
+        var rel = dir.Substring(root.Length).Trim('\\', '/');
+        if (rel.Length > 0)
+            foreach (var seg in rel.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+                crumb += " / " + seg;
+        return crumb;
     }
 
     /// <summary>A friendly drive name like "Local Disk (C:)" or "MyUSB (E:)".</summary>

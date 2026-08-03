@@ -88,54 +88,45 @@ object ConduitRuntime {
     val browseActive = MutableStateFlow(false)
     val browseCanGoUp = MutableStateFlow(false)
 
-    // The folders we descended through (token, name); empty = at the roots. Guards stale replies.
+    // Guards stale replies; the parent token comes from the last reply (null = at the top level).
     @Volatile private var activeBrowseId: String? = null
-    private val browseStack = mutableListOf<Pair<String, String>>()
-    @Volatile private var browseRootName = "Files"
+    @Volatile private var browseParent: String? = null
 
-    /** Opens the browser at the peer's roots; returns the request id to send with the empty token. */
+    /** Opens the browser at the default landing folder; returns the request id (send an empty token). */
     @Synchronized
     fun startBrowse(): String {
-        browseStack.clear()
         val id = UUID.randomUUID().toString().replace("-", "")
         activeBrowseId = id
+        browseParent = null
         browseActive.value = true
         browseEntries.value = emptyList()
         browseStatus.value = "Loading…"
+        browsePath.value = ""
         browseCanGoUp.value = false
-        updateBrowsePath()
         return id
     }
 
-    /** Descends into a folder; returns the request id to send with [token]. */
+    /** Starts a navigation (folder open or up); returns a fresh request id to send with the token. */
     @Synchronized
-    fun enterFolder(token: String, name: String): String {
-        browseStack.add(token to name)
+    fun navigate(): String {
         val id = UUID.randomUUID().toString().replace("-", "")
         activeBrowseId = id
         browseStatus.value = "Loading…"
-        browseCanGoUp.value = true
-        updateBrowsePath()
         return id
     }
 
-    /** Goes up one level; returns the request id and the parent token to list ("" at the roots). */
+    /** Goes up one level; returns the request id and the parent token, or null if already at the top. */
     @Synchronized
-    fun browseUp(): Pair<String, String> {
-        if (browseStack.isNotEmpty()) browseStack.removeAt(browseStack.size - 1)
-        val id = UUID.randomUUID().toString().replace("-", "")
-        activeBrowseId = id
-        browseStatus.value = "Loading…"
-        browseCanGoUp.value = browseStack.isNotEmpty()
-        updateBrowsePath()
-        return id to (browseStack.lastOrNull()?.first ?: "")
+    fun browseUp(): Pair<String, String>? {
+        val parent = browseParent ?: return null
+        return navigate() to parent
     }
 
     /** Closes the browser and clears its state. */
     @Synchronized
     fun closeBrowse() {
         activeBrowseId = null
-        browseStack.clear()
+        browseParent = null
         browseActive.value = false
         browseEntries.value = emptyList()
         browseStatus.value = ""
@@ -144,12 +135,11 @@ object ConduitRuntime {
     }
 
     @Synchronized
-    fun setDirListing(requestId: String, name: String, error: String?, entries: List<BrowseEntryUi>) {
+    fun setDirListing(requestId: String, path: String, parent: String?, error: String?, entries: List<BrowseEntryUi>) {
         if (requestId != activeBrowseId) return // stale/superseded reply — ignore
-        if (browseStack.isEmpty() && name.isNotEmpty()) {
-            browseRootName = name
-            updateBrowsePath()
-        }
+        browseParent = parent
+        browseCanGoUp.value = parent != null
+        browsePath.value = path
         if (error != null) {
             browseEntries.value = emptyList()
             browseStatus.value = error
@@ -160,10 +150,6 @@ object ConduitRuntime {
         val files = entries.size - folders
         browseStatus.value = if (entries.isEmpty()) "Empty folder"
         else "$folders folder${if (folders == 1) "" else "s"}, $files file${if (files == 1) "" else "s"}"
-    }
-
-    private fun updateBrowsePath() {
-        browsePath.value = browseRootName + browseStack.joinToString("") { " / " + it.second }
     }
 
     @Synchronized

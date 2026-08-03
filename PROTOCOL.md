@@ -78,8 +78,8 @@ Every decrypted payload is a JSON object with this envelope:
 | `file-search-result`  | both             | `{ requestId, truncated, results: [{ id, name, size, folder, mime }] }` — reply to `file-search` |
 | `file-search-cancel`  | both             | `{ requestId }` — ask the peer to stop the search with this id; it aborts the in-flight walk and sends no result |
 | `file-request`        | both             | `{ id }` — ask the peer to send a file it returned in a `file-search-result` or `dir-list-result` (streamed via `file-offer`/`file-chunk`/`file-complete`) |
-| `dir-list`            | both             | `{ requestId, token }` — ask the peer to list a directory. Empty/absent `token` lists the top-level roots |
-| `dir-list-result`     | both             | `{ requestId, token, name, error?, entries: [{ name, isDir, token, size, mime }] }` — reply to `dir-list`; each entry's `token` descends (folders) or downloads (files) |
+| `dir-list`            | both             | `{ requestId, token }` — ask the peer to list a directory. `token`: empty = the default landing folder; `"@root"` = the top level; otherwise a folder token from a prior result |
+| `dir-list-result`     | both             | `{ requestId, token, name, path, parent?, error?, entries: [{ name, isDir, token, size, mime }] }` — reply to `dir-list`. `path` is the breadcrumb; `parent` is the token to go up (absent at the top); each entry's `token` descends (folders) or downloads (files) |
 | `open-link`           | both             | `{ url }` — open this URL in the peer's default browser (only `http`/`https` are honored) |
 | `notification`        | android → win    | `{ key, appName, title, text, iconB64?, canReply, actions:[] }` |
 | `notification-action` | win → android    | `{ key, action: "dismiss"\|"reply", text? }` |
@@ -120,13 +120,15 @@ briefly; a `file-request` is honored only for a token from a recent result, so a
 pull an arbitrary path. Downloads reuse the normal `file-offer`/`file-chunk`/`file-complete` flow.
 
 **Remote file browser** (`dir-list`) walks the *other* device's folders one level at a time. A
-`dir-list` with an empty `token` returns the top-level **roots** (Windows: every ready drive — C:,
-D:, …; Android: internal storage, or the readable public folders). Every entry the responder returns —
-folder or file — carries its own **opaque token**, mapped briefly to a local path the same way
-search tokens are. To open a folder, send its token back in another `dir-list`; to download a
-file, send its token in a `file-request`. Because access is only ever by a token the responder
-just handed out, a peer can never list or pull an arbitrary path. The requester keeps a small
-stack of the tokens it descended through, so navigating "up" just re-lists a parent token.
+`dir-list` with an empty `token` opens the **default landing folder** (Windows: the user's home
+folder; Android: internal storage / the readable public folders), and a `"@root"` token opens the
+**top level** (Windows: every ready drive — C:, D:, …; Android: the storage root). Every entry the
+responder returns — folder or file — carries its own **opaque token**, mapped briefly to a local
+path the same way search tokens are. To open a folder, send its token back in another `dir-list`;
+to download a file, send its token in a `file-request`. Because access is only ever by a token the
+responder just handed out, a peer can never list or pull an arbitrary path. The responder also
+returns the breadcrumb `path` and the `parent` token for the folder it listed, so the requester
+stays stateless — "up" just lists `parent`, which climbs from the home folder out to the drive list.
 
 ## 5. Encryption
 

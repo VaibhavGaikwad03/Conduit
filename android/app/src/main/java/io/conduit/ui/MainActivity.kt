@@ -303,10 +303,10 @@ private fun ConduitScreen(
     fun browsePc(device: DeviceInfo) = sendDirList(device, ConduitRuntime.startBrowse(), "")
 
     fun enterBrowseFolder(device: DeviceInfo, entry: BrowseEntryUi) =
-        sendDirList(device, ConduitRuntime.enterFolder(entry.token, entry.name), entry.token)
+        sendDirList(device, ConduitRuntime.navigate(), entry.token)
 
     fun browseUpOnPc(device: DeviceInfo) {
-        val (requestId, token) = ConduitRuntime.browseUp()
+        val (requestId, token) = ConduitRuntime.browseUp() ?: return
         sendDirList(device, requestId, token)
     }
 

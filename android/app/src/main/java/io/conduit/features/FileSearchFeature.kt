@@ -37,8 +37,14 @@ class FileSearchFeature(private val context: Context) {
         val mime: String,
     )
 
-    /** A listed directory: its display name and its immediate children (folders first). */
-    data class Listing(val name: String, val entries: List<Entry>, val error: String?)
+    /** A listed directory: name, breadcrumb path, parent token (null at the top), children, error. */
+    data class Listing(
+        val name: String,
+        val path: String,
+        val parent: String?,
+        val entries: List<Entry>,
+        val error: String?,
+    )
 
     // Opaque id -> content URI, bounded so stale tokens age out (insertion-ordered = FIFO).
     private val tokens = object : LinkedHashMap<String, Uri>() {
@@ -143,27 +149,28 @@ class FileSearchFeature(private val context: Context) {
     // ---- Directory browsing ----------------------------------------------------
 
     /**
-     * Lists a directory one level deep for the remote browser. An empty [token] returns the
-     * top-level roots (internal storage with All-files access, else the readable public folders);
-     * otherwise it lists the folder that token was handed out for. Every child is registered under
-     * a fresh token — folders for [listDir], files for download — so the peer can only ever descend
-     * or pull something we just offered, never an arbitrary path.
+     * Lists a directory one level deep for the remote browser. An empty [token] (or [ROOT_TOKEN])
+     * opens the top level — internal storage with All-files access, else the readable public
+     * folders; otherwise it lists the folder that token was handed out for. Every child is
+     * registered under a fresh token — folders for [listDir], files for download — so the peer can
+     * only ever descend or pull something we just offered, never an arbitrary path. The reply also
+     * carries the breadcrumb path and the parent token so the requester can navigate up statelessly.
      */
     @Synchronized
     fun listDir(token: String?): Listing {
         val t = token?.trim().orEmpty()
-        if (t.isEmpty()) return listRoots()
+        if (t.isEmpty() || t == ROOT_TOKEN) return listRoots()
         val dir = dirTokens[t]
         if (dir == null || !dir.isDirectory) {
-            return Listing("", emptyList(), "That folder is no longer available.")
+            return Listing("", "", ROOT_TOKEN, emptyList(), "That folder is no longer available.")
         }
-        return listChildren(dir, dir.name)
+        return listChildren(dir)
     }
 
     private fun listRoots(): Listing {
         if (hasAllFilesAccess()) {
             val root = Environment.getExternalStorageDirectory()
-            if (root != null && root.isDirectory) return listChildren(root, "Internal storage")
+            if (root != null && root.isDirectory) return listChildren(root)
         }
         // Scoped storage: no real tree, so offer the standard public folders we can read.
         val entries = mutableListOf<Entry>()
@@ -180,11 +187,12 @@ class FileSearchFeature(private val context: Context) {
             if (f != null && f.isDirectory) entries.add(Entry(registerDir(f), f.name, true, 0, ""))
         }
         val error = if (entries.isEmpty()) "Nothing available to browse." else null
-        return Listing("Internal storage", entries, error)
+        return Listing("Internal storage", "Internal storage", null, entries, error)
     }
 
-    private fun listChildren(dir: File, name: String): Listing {
-        val children = dir.listFiles() ?: return Listing(name, emptyList(), "Couldn't read that folder.")
+    private fun listChildren(dir: File): Listing {
+        val children = dir.listFiles()
+            ?: return Listing(dirName(dir), breadcrumb(dir), parentToken(dir), emptyList(), "Couldn't read that folder.")
         val entries = mutableListOf<Entry>()
         val dirs = children.filter { it.isDirectory }.sortedBy { it.name.lowercase() }
         val files = children.filter { it.isFile }.sortedBy { it.name.lowercase() }
@@ -197,7 +205,32 @@ class FileSearchFeature(private val context: Context) {
             entries.add(Entry(registerFile(f), f.name, false, f.length(), guessMime(f.name)))
         }
         log.i("Listed ${dir.path} -> ${entries.size} entr(ies)")
-        return Listing(name, entries, null)
+        return Listing(dirName(dir), breadcrumb(dir), parentToken(dir), entries, null)
+    }
+
+    /** The top-of-tree label ("Internal storage") at the storage root, else the folder's own name. */
+    private fun dirName(dir: File): String {
+        val root = Environment.getExternalStorageDirectory()
+        return if (root != null && dir.absolutePath == root.absolutePath) "Internal storage" else dir.name
+    }
+
+    /** Builds the "Internal storage / DCIM / Camera" breadcrumb for a folder under shared storage. */
+    private fun breadcrumb(dir: File): String {
+        val root = Environment.getExternalStorageDirectory() ?: return "Internal storage / ${dir.name}"
+        if (dir.absolutePath == root.absolutePath) return "Internal storage"
+        val rel = dir.absolutePath.removePrefix(root.absolutePath).trim('/')
+        val crumb = StringBuilder("Internal storage")
+        if (rel.isNotEmpty()) rel.split('/').filter { it.isNotEmpty() }.forEach { crumb.append(" / ").append(it) }
+        return crumb.toString()
+    }
+
+    /** The token to list [dir]'s parent, [ROOT_TOKEN] just under the storage root, or null at the top. */
+    private fun parentToken(dir: File): String? {
+        val root = Environment.getExternalStorageDirectory()
+        if (root != null && dir.absolutePath == root.absolutePath) return null
+        val parent = dir.parentFile ?: return null
+        if (root != null && parent.absolutePath == root.absolutePath) return ROOT_TOKEN
+        return registerDir(parent)
     }
 
     private fun registerDir(f: File): String {
@@ -230,5 +263,6 @@ class FileSearchFeature(private val context: Context) {
         const val MAX_DIR_TOKENS = 4000
         const val MAX_ENTRIES = 5000
         const val MIN_QUERY_LEN = 2
+        const val ROOT_TOKEN = "@root"
     }
 }

@@ -413,6 +413,8 @@ public sealed class FeatureCoordinator
             b["requestId"] = requestId;
             b["token"] = token;
             b["name"] = listing.Name;
+            b["path"] = listing.Path;
+            if (listing.Parent is not null) b["parent"] = listing.Parent;
             if (listing.Error is not null) b["error"] = listing.Error;
             var arr = new JsonArray();
             foreach (var en in listing.Entries)
@@ -454,6 +456,8 @@ public sealed class FeatureCoordinator
             RequestId = packet.GetString("requestId") ?? "",
             Token = packet.GetString("token") ?? "",
             Name = packet.GetString("name") ?? "",
+            Path = packet.GetString("path") ?? "",
+            Parent = packet.GetString("parent"),
             Error = packet.GetString("error"),
             Entries = entries,
         });
@@ -470,6 +474,8 @@ public sealed class DirListingEventArgs : EventArgs
     public string RequestId { get; init; } = "";
     public string Token { get; init; } = "";
     public string Name { get; init; } = "";
+    public string Path { get; init; } = "";
+    public string? Parent { get; init; }
     public string? Error { get; init; }
     public required IReadOnlyList<DirEntry> Entries { get; init; }
 }

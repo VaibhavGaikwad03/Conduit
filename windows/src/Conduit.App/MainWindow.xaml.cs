@@ -209,7 +209,7 @@ public partial class MainWindow : Window
         if (TargetDevice() is not { } d) return;
         if (row.IsDir)
         {
-            var requestId = _vm.EnterFolder(row.Token, row.Name);
+            var requestId = _vm.Navigate();
             await _coordinator.SendDirListAsync(d.DeviceId, requestId, row.Token);
         }
         else
@@ -221,8 +221,9 @@ public partial class MainWindow : Window
     private async void OnBrowseUp(object sender, RoutedEventArgs e)
     {
         if (TargetDevice() is not { } d) return;
-        var (requestId, token) = _vm.GoUp();
-        await _coordinator.SendDirListAsync(d.DeviceId, requestId, token);
+        if (_vm.BrowseParent is not { } parent) return;
+        var requestId = _vm.Navigate();
+        await _coordinator.SendDirListAsync(d.DeviceId, requestId, parent);
     }
 
     private void OnCloseBrowse(object sender, RoutedEventArgs e) => _vm.CloseBrowse();

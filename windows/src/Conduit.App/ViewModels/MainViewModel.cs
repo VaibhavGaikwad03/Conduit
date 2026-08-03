@@ -114,10 +114,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Breadcrumb of the folder currently shown, e.g. "This PC / Documents / Work".</summary>
     public string BrowsePath { get => _browsePath; set => Set(ref _browsePath, value); }
 
-    // The tokens+names of the folders we descended through; empty = at the roots.
-    private readonly List<(string Token, string Name)> _browseStack = new();
-    private string _browseRootName = "Files"; // the peer's name for its top level, from the roots listing
-    public bool CanGoUp => _browseStack.Count > 0;
+    // The token to list the current folder's parent, from the last reply; null = at the top level.
+    private string? _browseParent;
+    /// <summary>Token to list the parent of the folder currently shown, or null at the top.</summary>
+    public string? BrowseParent => _browseParent;
+    public bool CanGoUp => _browseParent is not null;
 
     private bool _searchActive;
     /// <summary>True from when a search starts until it is closed — drives the Close button's visibility.</summary>
@@ -268,40 +269,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     // ---- Remote file browser ---------------------------------------------------
 
-    /// <summary>Opens the browser at the peer's roots; returns the request id to send with the (empty) list.</summary>
+    /// <summary>Opens the browser at the default landing folder; returns the request id (send an empty token).</summary>
     public string StartBrowse()
     {
-        _browseStack.Clear();
         ActiveBrowseId = Guid.NewGuid().ToString("N");
         BrowseActive = true;
         BrowseEntries.Clear();
         OnChanged(nameof(HasBrowseEntries));
-        BrowseStatus = "Loading…";
-        UpdateBrowsePath();
+        _browseParent = null;
         OnChanged(nameof(CanGoUp));
+        BrowseStatus = "Loading…";
+        BrowsePath = "";
         return ActiveBrowseId;
     }
 
-    /// <summary>Descends into a folder; returns the request id to send with <paramref name="token"/>.</summary>
-    public string EnterFolder(string token, string name)
+    /// <summary>Starts a navigation (folder open or up); returns the request id to send with the token.</summary>
+    public string Navigate()
     {
-        _browseStack.Add((token, name));
         ActiveBrowseId = Guid.NewGuid().ToString("N");
         BrowseStatus = "Loading…";
-        UpdateBrowsePath();
-        OnChanged(nameof(CanGoUp));
         return ActiveBrowseId;
-    }
-
-    /// <summary>Goes up one level; returns the request id and the parent token to list ("" at roots).</summary>
-    public (string RequestId, string Token) GoUp()
-    {
-        if (_browseStack.Count > 0) _browseStack.RemoveAt(_browseStack.Count - 1);
-        ActiveBrowseId = Guid.NewGuid().ToString("N");
-        BrowseStatus = "Loading…";
-        UpdateBrowsePath();
-        OnChanged(nameof(CanGoUp));
-        return (ActiveBrowseId, _browseStack.Count > 0 ? _browseStack[^1].Token : "");
     }
 
     /// <summary>Closes the browser and clears its state.</summary>
@@ -309,7 +296,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         ActiveBrowseId = null;
         BrowseActive = false;
-        _browseStack.Clear();
+        _browseParent = null;
         BrowseEntries.Clear();
         OnChanged(nameof(HasBrowseEntries));
         OnChanged(nameof(CanGoUp));
@@ -320,11 +307,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void OnDirListing(DirListingEventArgs d)
     {
         if (d.RequestId != ActiveBrowseId) return; // stale/superseded reply — ignore
-        if (_browseStack.Count == 0 && !string.IsNullOrEmpty(d.Name))
-        {
-            _browseRootName = d.Name; // the peer's label for its top level
-            UpdateBrowsePath();
-        }
+        _browseParent = d.Parent;
+        OnChanged(nameof(CanGoUp));
+        BrowsePath = d.Path;
         BrowseEntries.Clear();
         if (d.Error is not null)
         {
@@ -345,9 +330,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         BrowseStatus = d.Entries.Count == 0 ? "Empty folder" : $"{folders} folder{(folders == 1 ? "" : "s")}, {files} file{(files == 1 ? "" : "s")}";
         OnChanged(nameof(HasBrowseEntries));
     }
-
-    private void UpdateBrowsePath() =>
-        BrowsePath = _browseRootName + string.Concat(_browseStack.Select(s => " / " + s.Name));
 
     public bool HasBrowseEntries => BrowseEntries.Count > 0;
 

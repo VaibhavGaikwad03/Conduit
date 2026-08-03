@@ -192,6 +192,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
                 put("requestId", requestId)
                 put("token", token)
                 put("name", listing.name)
+                put("path", listing.path)
+                listing.parent?.let { put("parent", it) }
                 listing.error?.let { put("error", it) }
                 put("entries", JSONArray().apply {
                     listing.entries.forEach { e ->
@@ -225,7 +227,8 @@ class FeatureHub(private val context: Context, private val node: ConduitNode) {
         }
         ConduitRuntime.setDirListing(
             requestId = packet.getString("requestId") ?: "",
-            name = packet.getString("name") ?: "",
+            path = packet.getString("path") ?: "",
+            parent = packet.getString("parent"),
             error = packet.getString("error"),
             entries = list,
         )
