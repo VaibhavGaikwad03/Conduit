@@ -12,3 +12,5 @@ EXPORTS
     ConduitScreenFeedStart
     ConduitScreenFeedFrame
     ConduitScreenFeedStop
+    ConduitDesktopStart
+    ConduitDesktopStop

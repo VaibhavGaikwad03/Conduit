@@ -37,6 +37,7 @@ Conduit/
 | Open link on other device   | both ways        |   ✅    |   ✅    |
 | Phone as PC webcam          | Android → Windows|   ✅    |   ✅    |
 | Screen mirroring            | Android → Windows|   ✅    |   ✅    |
+| View & control PC desktop   | Windows → Android|   ✅    |   ✅    |
 | Remote control (touch/type) | Windows → Android|   ✅    |   ✅    |
 | Control PC (lock/sleep/shutdown/find) | Android → Windows|   ✅    |   ✅    |
 | Phone as PC touchpad + keyboard | Android → Windows|   ✅    |   ✅    |
@@ -53,6 +54,15 @@ Conduit/
   files stream over a dedicated port in 1 MB AES-256-GCM blocks (no base64, no per-chunk JSON). This
   moves multi-gigabyte files at full LAN speed while staying end-to-end encrypted. Received files land
   in **Downloads** on both platforms.
+
+### View & control the PC from your phone
+
+Open a paired PC and tap **Mirror & control PC** to see its primary display, live, on your phone.
+The PC captures its screen (cursor included), encodes H.264, and streams it to the phone over a
+dedicated port; the phone decodes it to a full-screen view. Touch is **direct**: tap where you want
+to click, drag to drag, long-press to right-click, and two-finger drag to scroll — the tap lands at
+that exact spot on the PC. A keyboard button types into whatever app has focus. The video rides its
+own port; every touch and keystroke goes over the encrypted session, and nothing leaves the LAN.
 
 ### Phone permissions some features need (granted once)
 
@@ -72,8 +82,8 @@ A few features rely on Android permissions the user enables once on the phone:
    matching 6-digit code. Once confirmed, the peer is remembered (trusted store).
 3. **Session** — a persistent, encrypted TCP connection (port `5462`) carries all
    feature traffic using the length-prefixed JSON protocol in [`PROTOCOL.md`](PROTOCOL.md).
-   Heavy data (webcam, screen mirror, and big-file streaming) uses its own dedicated ports
-   (`5463`–`5465`) so it never clogs the session channel.
+   Heavy data (webcam, screen mirror, PC-desktop mirror, and big-file streaming) uses its own
+   dedicated ports (`5463`–`5466`) so it never clogs the session channel.
 4. **Heartbeat** — periodic `ping`/`pong` keeps the link alive and detects drops so the
    UI reflects connection state instantly.
 

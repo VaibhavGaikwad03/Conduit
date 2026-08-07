@@ -37,6 +37,8 @@ public static class PacketType
     public const string WebcamSwitch = "webcam-switch";
     public const string ScreenStart = "screen-start";
     public const string ScreenStop = "screen-stop";
+    public const string DesktopStart = "desktop-start";
+    public const string DesktopStop = "desktop-stop";
     public const string Input = "input";
     public const string Disconnect = "disconnect";
     public const string Error = "error";
@@ -69,6 +71,8 @@ public sealed class Packet
     public long GetLong(string key, long fallback = 0) =>
         Body[key] is { } n && n.AsValue().TryGetValue<long>(out var v) ? v : fallback;
     public int GetInt(string key, int fallback = 0) => (int)GetLong(key, fallback);
+    public double GetDouble(string key, double fallback = 0) =>
+        Body[key] is { } n && n.AsValue().TryGetValue<double>(out var v) ? v : fallback;
     public bool GetBool(string key, bool fallback = false) =>
         Body[key] is { } n && n.AsValue().TryGetValue<bool>(out var v) ? v : fallback;
 

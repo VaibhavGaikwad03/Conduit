@@ -78,6 +78,15 @@
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Full-screen viewer + controller for the PC's desktop (H.264 in, touch out). -->
+        <activity
+            android:name=".ui.DesktopMirrorActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden"
+            android:theme="@style/Theme.Conduit" />
+
         <!-- Stops the "find my phone" ring from its notification action -->
         <receiver
             android:name=".features.RingStopReceiver"

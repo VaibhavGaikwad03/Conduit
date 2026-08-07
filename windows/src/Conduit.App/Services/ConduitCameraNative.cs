@@ -16,9 +16,16 @@ internal static class ConduitCameraNative
     {
         NativeLibrary.SetDllImportResolver(typeof(ConduitCameraNative).Assembly, (name, _, _) =>
         {
-            if (name == Dll && File.Exists(WebcamPaths.InstalledDll))
+            if (name != Dll) return IntPtr.Zero;
+
+            // Prefer the copy shipped next to the app: it always matches this build, so features
+            // that call the exported C functions in-process (decode, desktop capture) never hit a
+            // stale export. The virtual camera's COM activation goes through the separately
+            // regsvr32-registered ProgramData copy, so this choice doesn't affect it. Fall back to
+            // the installed copy if the bundled one is somehow absent.
+            foreach (var path in new[] { WebcamPaths.BundledDll, WebcamPaths.InstalledDll })
             {
-                if (NativeLibrary.TryLoad(WebcamPaths.InstalledDll, out var handle))
+                if (File.Exists(path) && NativeLibrary.TryLoad(path, out var handle))
                     return handle;
             }
             return IntPtr.Zero;

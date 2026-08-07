@@ -255,6 +255,19 @@ private fun ConduitScreen(
         ConduitRuntime.node?.sendTo(device.deviceId, Packet.create(PacketType.PC_INPUT, build))
     }
 
+    // Open the full-screen PC-desktop viewer, which mirrors the PC's screen here and sends touches
+    // back as absolute pc-input. It handles desktop-start/stop itself.
+    fun viewPcScreen(device: DeviceInfo) {
+        if (ConduitRuntime.node?.isConnected(device.deviceId) != true) {
+            ConduitRuntime.lastEvent.value = "Not connected to ${device.name}"
+            return
+        }
+        context.startActivity(Intent(context, DesktopMirrorActivity::class.java).apply {
+            putExtra(DesktopMirrorActivity.EXTRA_DEVICE_ID, device.deviceId)
+            putExtra(DesktopMirrorActivity.EXTRA_DEVICE_NAME, device.name)
+        })
+    }
+
     fun disconnect(device: DeviceInfo) {
         ConduitRuntime.node?.disconnect(device.deviceId)
         ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
@@ -394,6 +407,7 @@ private fun ConduitScreen(
                 onMediaCommand = { cmd, value -> openDevice?.let { sendMediaCommand(it, cmd, value) } },
                 onRemoteCommand = { cmd -> openDevice?.let { sendRemoteCommand(it, cmd) } },
                 onPcInput = { build -> openDevice?.let { sendPcInput(it, build) } },
+                onViewScreen = { openDevice?.let { viewPcScreen(it) } },
                 onSearch = { query -> openDevice?.let { searchFiles(it, query) } },
                 onDownload = { result -> downloadResult(result) },
                 onBrowse = { openDevice?.let { browsePc(it) } },
@@ -631,6 +645,7 @@ private fun MainContent(
     onMediaCommand: (String, Double?) -> Unit,
     onRemoteCommand: (String) -> Unit,
     onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
+    onViewScreen: () -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
     onBrowse: () -> Unit,
@@ -700,6 +715,7 @@ private fun MainContent(
                     onMediaCommand = onMediaCommand,
                     onRemoteCommand = onRemoteCommand,
                     onPcInput = onPcInput,
+                    onViewScreen = onViewScreen,
                     onSearch = onSearch,
                     onDownload = onDownload,
                     onBrowse = onBrowse,
@@ -760,6 +776,7 @@ private fun DeviceDetail(
     onMediaCommand: (String, Double?) -> Unit,
     onRemoteCommand: (String) -> Unit,
     onPcInput: (org.json.JSONObject.() -> Unit) -> Unit,
+    onViewScreen: () -> Unit,
     onSearch: (String) -> Unit,
     onDownload: (SearchResultUi) -> Unit,
     onBrowse: () -> Unit,
@@ -812,6 +829,15 @@ private fun DeviceDetail(
         Spacer(Modifier.height(20.dp))
         SectionLabel("BROWSE FILES ON PC")
         FileBrowseCard(onBrowse, onBrowseEnter, onBrowseUp, onBrowseDownload)
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("VIEW PC SCREEN")
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Card),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            ActionRow("🖥️", "Mirror & control PC", "See the PC screen and tap to control it", onViewScreen)
+        }
         Spacer(Modifier.height(20.dp))
         SectionLabel("TOUCHPAD")
         TouchpadCard(onPcInput)

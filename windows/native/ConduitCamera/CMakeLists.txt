@@ -15,6 +15,7 @@ add_library(ConduitCamera SHARED
     Control.cpp
     Decoder.cpp
     ScreenDecoder.cpp
+    DesktopCapture.cpp
 )
 
 target_compile_definitions(ConduitCamera PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN)
@@ -29,6 +30,8 @@ target_link_libraries(ConduitCamera PRIVATE
     oleaut32
     advapi32
     ksuser
+    d3d11
+    dxgi
 )
 
 # Export DllGetClassObject / DllCanUnloadNow / DllRegister... via the .def file.

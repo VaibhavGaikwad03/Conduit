@@ -12,6 +12,7 @@ Both implementations MUST stay in sync with it.
 | Webcam video stream | 5463 | TCP (H.264) |
 | Screen mirror stream| 5464 | TCP (H.264) |
 | File stream (big files) | 5465 | TCP (raw, AES-256-GCM blocks) |
+| Desktop mirror stream | 5466 | TCP (H.264) |
 
 ## 1. Discovery (UDP 5461)
 
@@ -87,7 +88,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `media-state`         | both             | `{ playing, title, artist, app, position, duration, volume }` |
 | `media-command`       | both             | `{ command: "play"\|"pause"\|"next"\|"prev"\|"volume", value? }` |
 | `remote-command`      | both             | `{ command }`. win → android: `"ring"`\|`"ring-stop"`\|`"screenshot"`. android → win: `"lock"`\|`"sleep"`\|`"shutdown"`\|`"findpc"` (volume goes through `media-command`) |
-| `pc-input`            | android → win    | `{ action, ... }` — drive the PC mouse/keyboard from the phone touchpad. `action`: `"move"` (`dx`,`dy` relative px), `"click"` (`button`: `"left"`\|`"right"`\|`"middle"`), `"scroll"` (`amount`, ±120/notch), `"text"` (`text` typed as Unicode), `"key"` (`key`: `enter`\|`backspace`\|`tab`\|`escape`\|arrows\|`home`\|`end`) |
+| `pc-input`            | android → win    | `{ action, ... }` — drive the PC mouse/keyboard from the phone. Relative (touchpad) `action`: `"move"` (`dx`,`dy` relative px), `"click"` (`button`: `"left"`\|`"right"`\|`"middle"`), `"scroll"` (`amount`, ±120/notch), `"text"` (`text` typed as Unicode), `"key"` (`key`: `enter`\|`backspace`\|`tab`\|`escape`\|arrows\|`home`\|`end`). Absolute (direct-touch, used while viewing the PC desktop): `"moveabs"` (`x`,`y` normalized `0..1` over the primary display), `"down"`/`"up"` (`button`, press/release at the current cursor spot — enables drag and long-press right-click), `"tap"` (`x`,`y`,`button?` — moveabs + down + up in one packet) |
 | `battery`             | android → win    | `{ level, charging, temperature }` |
 | `device-status`       | android → win    | `{ ringerMode }` — ringer mode: `"silent"` \| `"vibrate"` \| `"normal"` |
 | `sms-list`            | android → win    | `{ threads: [{ address, name, snippet, ts }] }` |
@@ -98,15 +99,29 @@ Every decrypted payload is a JSON object with this envelope:
 | `screen-start`        | win → android    | `{ port }` — start mirroring the phone screen to the PC on this TCP port (default 5464) |
 | `screen-stop`         | win → android    | `{}` — stop mirroring the phone screen |
 | `input`               | win → android    | `{ action, x, y, x2, y2, durationMs, key, text }` — remote control while mirroring (see below) |
+| `desktop-start`       | android → win    | `{ port }` — ask the PC to mirror its **primary display** to this TCP port on the phone (default 5466). The PC connects out to `phoneIp:port` and streams H.264 there |
+| `desktop-stop`        | android → win    | `{}` — stop mirroring the PC desktop |
 | `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
 | `error`               | both             | `{ code, message }` |
 
-**Video streams** (webcam and screen mirror) are far too heavy for the JSON session channel, so
-each uses its own dedicated TCP port (5463 webcam, 5464 screen). The control packets above only
-tell the phone *when* and *where* to connect; the phone then opens the video socket back to the
-PC and writes **length-prefixed Annex-B H.264 access units** (4-byte big-endian length + payload,
-same framing as §2 but never encrypted — it is raw video on a separate port). `screen-start` first
-prompts the phone user for the system screen-capture consent before any frame is sent.
+**Video streams** (webcam, phone-screen mirror, PC-desktop mirror) are far too heavy for the JSON
+session channel, so each uses its own dedicated TCP port (5463 webcam, 5464 phone screen, 5466 PC
+desktop). The control packets above only tell the peer *when* and *where* to connect; the **sender**
+then opens the video socket to the **receiver** and writes **length-prefixed Annex-B H.264 access
+units** (4-byte big-endian length + payload, same framing as §2 but never encrypted — it is raw
+video on a separate port). For webcam and phone-screen the phone is the sender (it connects out to
+the PC); for the PC desktop the phone is the receiver, so it **listens** on 5466 and the PC connects
+out to it. `screen-start` first prompts the phone user for the system screen-capture consent before
+any frame is sent.
+
+**PC desktop mirror** (`desktop-start`) is the reverse of the phone-screen mirror: the phone views
+and controls the PC. The PC captures its primary display, encodes H.264, and streams it to the
+phone's port 5466; the phone decodes it to a full-screen surface. Touches on that surface become
+`pc-input` packets with **absolute** `0..1` coordinates over the primary display — a tap moves the
+PC cursor there and clicks, a drag presses/moves/releases, a long-press right-clicks — so control is
+direct (touch where you want to click) rather than the relative touchpad model. All that input rides
+the encrypted 5462 session; only the raw video is on the open 5466 port, same trust model as the
+other video streams (LAN-local).
 
 **Remote input** (`input`) lets the PC drive the phone while its screen is mirrored. `x`/`y`/`x2`/`y2`
 are normalized `0..1` coordinates over the phone screen, so they're resolution-independent. `action`:

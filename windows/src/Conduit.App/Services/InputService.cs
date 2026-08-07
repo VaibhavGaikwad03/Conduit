@@ -79,14 +79,43 @@ public sealed class InputService
 
     public void Click(string button)
     {
-        var (down, up) = button switch
-        {
-            "right"  => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
-            "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
-            _        => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
-        };
-        SendMouse(0, 0, 0, down);
-        SendMouse(0, 0, 0, up);
+        MouseDown(button);
+        MouseUp(button);
+    }
+
+    /// <summary>Jumps the cursor to an absolute point on the primary display. <paramref name="nx"/>/
+    /// <paramref name="ny"/> are normalized 0..1 — the direct-touch path used while the phone views
+    /// the PC desktop. Immediate (no easing), unlike the relative touchpad <see cref="Move"/>.</summary>
+    public void MoveAbsolute(double nx, double ny)
+    {
+        nx = Math.Clamp(nx, 0.0, 1.0);
+        ny = Math.Clamp(ny, 0.0, 1.0);
+        // 0..65535 maps across the primary monitor (no VIRTUALDESK flag), which is exactly what we mirror.
+        int ax = (int)Math.Round(nx * 65535.0);
+        int ay = (int)Math.Round(ny * 65535.0);
+        SendMouse(ax, ay, 0, MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE);
+    }
+
+    public void MouseDown(string button) => SendMouse(0, 0, 0, button switch
+    {
+        "right"  => MOUSEEVENTF_RIGHTDOWN,
+        "middle" => MOUSEEVENTF_MIDDLEDOWN,
+        _        => MOUSEEVENTF_LEFTDOWN,
+    });
+
+    public void MouseUp(string button) => SendMouse(0, 0, 0, button switch
+    {
+        "right"  => MOUSEEVENTF_RIGHTUP,
+        "middle" => MOUSEEVENTF_MIDDLEUP,
+        _        => MOUSEEVENTF_LEFTUP,
+    });
+
+    /// <summary>Move to an absolute point and click there in one shot (a direct-touch tap).</summary>
+    public void Tap(double nx, double ny, string button)
+    {
+        MoveAbsolute(nx, ny);
+        MouseDown(button);
+        MouseUp(button);
     }
 
     /// <summary>Positive amount scrolls up, negative down (one notch ≈ 120).</summary>
@@ -177,6 +206,7 @@ public sealed class InputService
     private const uint INPUT_MOUSE = 0;
     private const uint INPUT_KEYBOARD = 1;
     private const uint MOUSEEVENTF_MOVE = 0x0001;
+    private const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
     private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     private const uint MOUSEEVENTF_LEFTUP = 0x0004;
     private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;

@@ -26,6 +26,7 @@ public sealed class FeatureCoordinator
     private readonly FileSearchService _search;
     private readonly NotificationService _notifications;
     private readonly InputService _input = new();
+    private readonly DesktopShareService _desktop = new();
 
     // Files at least this big take the fast raw-stream path; smaller ones stay on the simple chunked path.
     private const long StreamThreshold = 1 * 1024 * 1024;
@@ -103,6 +104,20 @@ public sealed class FeatureCoordinator
 
                 case PacketType.PcInput:
                     HandlePcInput(packet);
+                    break;
+
+                case PacketType.DesktopStart:
+                {
+                    var host = _node.IpFor(e.Peer.DeviceId);
+                    if (host is null) { _log.Warning("desktop-start: no known IP for peer"); break; }
+                    int port = packet.GetInt("port", DesktopShareService.DefaultPort);
+                    _desktop.Stop();               // one capturer at a time; replace any prior share
+                    _desktop.Start(host, port);
+                    break;
+                }
+
+                case PacketType.DesktopStop:
+                    _desktop.Stop();
                     break;
 
                 case PacketType.FileOffer:
@@ -221,11 +236,18 @@ public sealed class FeatureCoordinator
     {
         switch (packet.GetString("action"))
         {
-            case "move":   _input.Move(packet.GetInt("dx"), packet.GetInt("dy")); break;
-            case "click":  _input.Click(packet.GetString("button") ?? "left"); break;
-            case "scroll": _input.Scroll(packet.GetInt("amount")); break;
-            case "text":   _input.Type(packet.GetString("text") ?? ""); break;
-            case "key":    _input.Key(packet.GetString("key") ?? ""); break;
+            // Relative (touchpad) actions.
+            case "move":    _input.Move(packet.GetInt("dx"), packet.GetInt("dy")); break;
+            case "click":   _input.Click(packet.GetString("button") ?? "left"); break;
+            case "scroll":  _input.Scroll(packet.GetInt("amount")); break;
+            case "text":    _input.Type(packet.GetString("text") ?? ""); break;
+            case "key":     _input.Key(packet.GetString("key") ?? ""); break;
+            // Absolute (direct-touch) actions used while the phone views the PC desktop.
+            case "moveabs": _input.MoveAbsolute(packet.GetDouble("x"), packet.GetDouble("y")); break;
+            case "down":    _input.MouseDown(packet.GetString("button") ?? "left"); break;
+            case "up":      _input.MouseUp(packet.GetString("button") ?? "left"); break;
+            case "tap":     _input.Tap(packet.GetDouble("x"), packet.GetDouble("y"),
+                                       packet.GetString("button") ?? "left"); break;
         }
     }
 
