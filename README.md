@@ -20,11 +20,26 @@ Your phone and PC, working as a single seamless device — everything stays on y
       <em>Open a link on the phone, search or browse its files, and control media playback.</em>
     </td>
     <td width="50%" valign="top">
+      <img src="docs/screenshots/windows-features.png" width="100%" alt="Media remote, webcam, screen mirror and notifications"><br>
+      <em>Media remote, use the phone as a webcam, mirror its screen, and see notifications from the phone.</em>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
       <img src="docs/screenshots/windows-browse.png" width="100%" alt="Browsing the phone's folders from the PC"><br>
       <em>Browse the phone's folders from the PC and pull any file on demand.</em>
     </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/windows-webcam.png" width="100%" alt="Phone used as a webcam (Conduit Camera) in Google Meet"><br>
+      <em>The phone's camera shows up as “Conduit Camera”, a virtual webcam any app can use — here in Google Meet.</em>
+    </td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="docs/screenshots/windows-phone-mirror.png" width="330" alt="The phone's screen mirrored in a window on the PC"><br>
+  <em>The phone's screen mirrored live in a window on the PC.</em>
+</p>
 
 ### Android app
 
