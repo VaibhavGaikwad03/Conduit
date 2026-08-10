@@ -56,6 +56,11 @@ Your phone and PC, working as a single seamless device — everything stays on y
   </tr>
 </table>
 
+<p align="center">
+  <img src="docs/screenshots/android-control-pc.jpg" width="760" alt="Viewing and controlling the PC desktop from the phone"><br>
+  <em>The PC's desktop, live on the phone — drag on the trackpad to move the cursor, tap to click, and type with the on-screen keyboard.</em>
+</p>
+
 ## Repository layout
 
 ```
