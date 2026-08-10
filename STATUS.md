@@ -17,16 +17,19 @@ Key files: `windows/native/ConduitCamera/DesktopCapture.cpp`, `Services/DesktopS
 `android/.../ui/DesktopMirrorActivity.kt`, `MainActivity.kt` ("Mirror & control PC" button).
 Verified working end-to-end on the vivo device.
 
-## 2. Locked-PC control — IN PROGRESS (all UNCOMMITTED)
+## 2. Locked-PC control — IN PROGRESS
 
 Goal: view/control the PC while Windows is **locked**. A user-session app can't capture or inject on
 the secure desktop, so a **LocalSystem service** launches a **helper** onto the target desktop.
 Security model (approved): **off by default + per-device "locked access" grant + Conduit PIN**.
 
-Staged build — **Stages 1 & 2 code-complete (built clean, awaiting one live retest each); Stage 3 remains.**
+Staged build — **Stage 1 DONE (committed `1c8cdd5`, verified live). Stage 2 code-complete, awaiting
+one live retest. Stage 3 remains.** Note: Stage 1's commit also carries the Stage 2 code, since both
+stages live in the same new agent/helper files (they couldn't be split).
 
-### Stage 1 — service + helper + IPC on the UNLOCKED desktop  ← we are here
-Proves the launch/capture/relay plumbing. **Working**, one fix pending retest.
+### Stage 1 — service + helper + IPC on the UNLOCKED desktop — DONE (committed `1c8cdd5`)
+Proves the launch/capture/relay plumbing. Verified live: taps land on elevated apps (Task Manager,
+elevated PowerShell) via the elevated-linked-token launch path.
 
 New pieces (all uncommitted):
 - `windows/src/Conduit.Core/Agent/AgentIpc.cs` — pipe framing + fixed binary `InputMsg` (no JSON on the SYSTEM side).
@@ -43,22 +46,21 @@ New pieces (all uncommitted):
 Verified live: service installs & runs as LocalSystem; `desktop-start` from the phone makes the
 agent launch `ConduitHelper.exe`; frames reach the phone; input drives the cursor. No errors in logs.
 
-**Last change — awaiting build + retest (the reason we paused):**
-- Symptom: taps did nothing on **elevated** apps (Task Manager, elevated PowerShell, elevated
+**Elevated-input fix (done, verified live):**
+- Symptom (fixed): taps did nothing on **elevated** apps (Task Manager, elevated PowerShell, elevated
   Conduit). Cause: helper launched with the **filtered medium-integrity token** → UIPI blocks input
   into high-integrity windows.
-- Fix (written, NOT yet built/deployed): `HelperLauncher.Launch` now prefers the user's **elevated
-  linked token** (`TryGetLinkedToken`, `TokenLinkedToken`) so the helper runs high-integrity. Logs
-  `Helper token: elevated (linked)`.
-- Also done in this batch: `Win32Input` gives synthetic clicks a 30 ms dwell + logs each tap/click
+- Fix: `HelperLauncher.Launch` prefers the user's **elevated linked token** (`TryGetLinkedToken`,
+  `TokenLinkedToken`) so the helper runs high-integrity. Logs `Helper token: elevated (linked)`.
+- Also in this batch: `Win32Input` gives synthetic clicks a 30 ms dwell + logs each tap/click
   (helper log tag `[HelperInput]`); `AgentDesktopShare.Input` failure log bumped to Debug.
 
-**➡️ To resume Stage 1:** build the agent (`dotnet build …\Conduit.Agent\Conduit.Agent.csproj -c
+**(historical) To resume Stage 1:** build the agent (`dotnet build …\Conduit.Agent\Conduit.Agent.csproj -c
 Release`), redeploy agent+helper to `C:\ProgramData\Conduit\agent` and restart `ConduitAgent` (see
 RUNNING.md §2/§4), retest taps on Task Manager/PowerShell. If good → **commit Stage 1** (it's all
 uncommitted). Note: elevated helper still can't touch the UAC consent dialog — that's Stage 2.
 
-### Stage 2 — the secure desktop (actual lock-screen control) — CODE DONE, awaiting live test
+### Stage 2 — the secure desktop (actual lock-screen control) — CODE DONE, awaiting live test  ← we are here
 Implemented as a **self-retargeting agent path**: the app keeps its stable socket+pipe while the agent
 swaps the helper "leg" underneath it across desktop switches, so the phone mirrors straight through a
 lock/unlock. No app-side in-process↔agent swap was needed (the agent path covers both desktops).
@@ -93,7 +95,7 @@ Off-by-default setting; per-device "locked access" grant in the paired-peer stor
 (hashed on PC, prompted on phone); audit logging; capability/status bits in `PROTOCOL.md` + Android
 PIN UI. **Run `/security-review`** on the SYSTEM service, IPC, and token/PIN handling before shipping.
 
-## Uncommitted files (to commit when Stages 1 & 2 are confirmed live)
-`Conduit.Core/Agent/AgentIpc.cs`, all of `Conduit.Agent/` (incl. new `AgentDesktops.cs`) and
-`Conduit.Helper/`, `Conduit.sln`, `Conduit.App/Services/AgentDesktopShare.cs`,
-`Conduit.App/Services/FeatureCoordinator.cs`, `RUNNING.md`, `STATUS.md`.
+## Commit status
+All the agent/helper/core/app feature files, `Conduit.sln`, `RUNNING.md`, and `STATUS.md` were
+committed in `1c8cdd5` (Stage 1). That commit also carries the Stage 2 code (same new files).
+Remaining uncommitted: only Visual Studio `.vs/` cache noise — do **not** commit it.
