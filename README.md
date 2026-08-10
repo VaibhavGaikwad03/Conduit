@@ -61,8 +61,11 @@ Open a paired PC and tap **Mirror & control PC** to see its primary display, liv
 The PC captures its screen (cursor included), encodes H.264, and streams it to the phone over a
 dedicated port; the phone decodes it to a full-screen view. Touch is **direct**: tap where you want
 to click, drag to drag, long-press to right-click, and two-finger drag to scroll — the tap lands at
-that exact spot on the PC. A keyboard button types into whatever app has focus. The video rides its
-own port; every touch and keystroke goes over the encrypted session, and nothing leaves the LAN.
+that exact spot on the PC. A keyboard button types into whatever app has focus, and a 🖱 button
+toggles an optional on-screen **trackpad** — a small pad you drag like a laptop touchpad for precise
+cursor control (tap to left-click, long-press to right-click, two-finger to scroll) when direct-touch
+is too coarse on the shrunk-down desktop. The video rides its own port; every touch and keystroke
+goes over the encrypted session, and nothing leaves the LAN.
 
 ### Phone permissions some features need (granted once)
 
