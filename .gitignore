@@ -2,6 +2,7 @@
 windows/**/bin/
 windows/**/obj/
 windows/artifacts/
+.vs/
 *.user
 
 # --- Android / Gradle ---
