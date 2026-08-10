@@ -4,6 +4,43 @@
 
 Your phone and PC, working as a single seamless device — everything stays on your own network, encrypted end to end, with nothing routed through the cloud.
 
+## Screenshots
+
+### Windows desktop app
+
+<p align="center">
+  <img src="docs/screenshots/windows-home.png" width="760" alt="Conduit on Windows, connected to a paired phone"><br>
+  <em>Connected to a paired phone — live battery, ringer and now-playing status, with quick actions for clipboard, files, lock and ring.</em>
+</p>
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/windows-actions.png" width="100%" alt="Open link, search, browse and media remote"><br>
+      <em>Open a link on the phone, search or browse its files, and control media playback.</em>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screenshots/windows-browse.png" width="100%" alt="Browsing the phone's folders from the PC"><br>
+      <em>Browse the phone's folders from the PC and pull any file on demand.</em>
+    </td>
+  </tr>
+</table>
+
+### Android app
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/android-home.jpg" width="300" alt="Conduit on Android, connected to a paired PC"><br>
+      <em>Connected to a paired PC — send files and clipboard, open links, and search or browse the PC's files.</em>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/android-mirror-touchpad.jpg" width="300" alt="Mirror and control the PC, with a trackpad"><br>
+      <em>Mirror and control the PC from the phone, with a trackpad for precise cursor control.</em>
+    </td>
+  </tr>
+</table>
+
 ## Repository layout
 
 ```
