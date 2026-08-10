@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json.Nodes;
-using Conduit.Core.Agent;
 using Conduit.Core.Logging;
 using Conduit.Core.Networking;
 using Conduit.Core.Protocol;
@@ -28,12 +27,6 @@ public sealed class FeatureCoordinator
     private readonly NotificationService _notifications;
     private readonly InputService _input = new();
     private readonly DesktopShareService _desktop = new();
-    private AgentDesktopShare? _agentDesktop;
-
-    // Stage-1 switch: route the PC-desktop mirror through the LocalSystem ConduitAgent (the path that
-    // will survive the lock screen) instead of capturing in-process. Off unless CONDUIT_DESKTOP_AGENT=1.
-    private static bool UseAgentDesktop =>
-        Environment.GetEnvironmentVariable("CONDUIT_DESKTOP_AGENT") == "1";
 
     // Files at least this big take the fast raw-stream path; smaller ones stay on the simple chunked path.
     private const long StreamThreshold = 1 * 1024 * 1024;
@@ -118,28 +111,13 @@ public sealed class FeatureCoordinator
                     var host = _node.IpFor(e.Peer.DeviceId);
                     if (host is null) { _log.Warning("desktop-start: no known IP for peer"); break; }
                     int port = packet.GetInt("port", DesktopShareService.DefaultPort);
-                    // one capturer at a time; replace any prior share (either path)
-                    _desktop.Stop();
-                    _agentDesktop?.Stop();
-                    _agentDesktop = null;
-                    if (UseAgentDesktop)
-                    {
-                        _agentDesktop = new AgentDesktopShare();
-                        if (!_agentDesktop.Start(host, port))
-                        {
-                            _log.Warning("Agent desktop path failed; falling back to in-process");
-                            _agentDesktop = null;
-                            _desktop.Start(host, port);
-                        }
-                    }
-                    else _desktop.Start(host, port);
+                    _desktop.Stop();               // one capturer at a time; replace any prior share
+                    _desktop.Start(host, port);
                     break;
                 }
 
                 case PacketType.DesktopStop:
                     _desktop.Stop();
-                    _agentDesktop?.Stop();
-                    _agentDesktop = null;
                     break;
 
                 case PacketType.FileOffer:
@@ -256,15 +234,6 @@ public sealed class FeatureCoordinator
     // The phone's touchpad/keyboard drives the PC mouse and typing via one "pc-input" packet.
     private void HandlePcInput(Packet packet)
     {
-        // While an agent-backed desktop share is live, input must reach the desktop the agent's
-        // helper is on (e.g. the lock screen), so forward it there instead of injecting locally.
-        var agent = _agentDesktop;
-        if (agent is { IsRunning: true })
-        {
-            agent.Input(ToInputMsg(packet));
-            return;
-        }
-
         switch (packet.GetString("action"))
         {
             // Relative (touchpad) actions.
@@ -280,42 +249,6 @@ public sealed class FeatureCoordinator
             case "tap":     _input.Tap(packet.GetDouble("x"), packet.GetDouble("y"),
                                        packet.GetString("button") ?? "left"); break;
         }
-    }
-
-    // Translate a "pc-input" packet into the agent's fixed-layout InputMsg (used on the agent path).
-    private static InputMsg ToInputMsg(Packet packet)
-    {
-        var button = (packet.GetString("button") ?? "left") switch
-        {
-            "right"  => MouseButton.Right,
-            "middle" => MouseButton.Middle,
-            _        => MouseButton.Left,
-        };
-        var action = packet.GetString("action") switch
-        {
-            "moveabs" => InputAction.MoveAbs,
-            "down"    => InputAction.Down,
-            "up"      => InputAction.Up,
-            "tap"     => InputAction.Tap,
-            "move"    => InputAction.Move,
-            "click"   => InputAction.Click,
-            "scroll"  => InputAction.Scroll,
-            "key"     => InputAction.Key,
-            "text"    => InputAction.Text,
-            _         => InputAction.MoveAbs,
-        };
-        return new InputMsg
-        {
-            Action = action,
-            Button = button,
-            Amount = packet.GetInt("amount"),
-            Dx = packet.GetInt("dx"),
-            Dy = packet.GetInt("dy"),
-            X = packet.GetDouble("x"),
-            Y = packet.GetDouble("y"),
-            Text = action == InputAction.Key ? (packet.GetString("key") ?? "")
-                                             : (packet.GetString("text") ?? ""),
-        };
     }
 
     /// <summary>Tells the phone to start streaming its camera (front/back) to this PC's video port.</summary>
