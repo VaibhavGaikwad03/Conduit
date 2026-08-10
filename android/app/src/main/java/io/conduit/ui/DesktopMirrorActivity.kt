@@ -338,8 +338,10 @@ class DesktopMirrorActivity : Activity() {
                     scrollAccum += y - lastScrollY
                     lastScrollY = y
                     while (abs(scrollAccum) >= SCROLL_STEP) {
-                        // Finger down (positive dy) scrolls content down = wheel down (negative notch).
-                        val notch = if (scrollAccum > 0) -120 else 120
+                        // Natural direct-touch scrolling: dragging the content up (fingers up,
+                        // negative dy) moves the view down = wheel down (negative notch), and
+                        // vice-versa. This matches how the page follows your fingers on the phone.
+                        val notch = if (scrollAccum > 0) 120 else -120
                         pc { put("action", "scroll"); put("amount", notch) }
                         scrollAccum -= if (scrollAccum > 0) SCROLL_STEP else -SCROLL_STEP
                     }
