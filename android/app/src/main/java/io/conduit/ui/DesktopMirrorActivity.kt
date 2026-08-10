@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Bundle
@@ -24,6 +25,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import io.conduit.logging.ConduitLog
 import io.conduit.protocol.Packet
@@ -40,6 +42,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Full-screen viewer for the PC's desktop, with direct-touch control. Sends `desktop-start`, listens
@@ -59,6 +62,7 @@ class DesktopMirrorActivity : Activity() {
         private const val LONG_PRESS_MS = 450L
         private const val TOUCH_SLOP = 16f
         private const val SCROLL_STEP = 40f   // px per wheel notch
+        private const val TRACKPAD_SENS = 2.2f // relative-move multiplier on the trackpad pad
     }
 
     private var deviceId: String? = null
@@ -67,6 +71,7 @@ class DesktopMirrorActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var surfaceView: SurfaceView
     private lateinit var keyInput: EditText
+    private lateinit var trackpad: View
 
     @Volatile private var surface: Surface? = null
     private val surfaceLatch = CountDownLatch(1)
@@ -120,7 +125,39 @@ class DesktopMirrorActivity : Activity() {
         wireKeyboard()
         root.addView(keyInput, FrameLayout.LayoutParams(1, 1))
 
-        // Small keyboard toggle in the corner.
+        // Optional relative trackpad: a small translucent pad you drag like a laptop touchpad for
+        // precise cursor control (direct-touch on the picture stays available when it's hidden).
+        val pad = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(96, 12, 22, 34))       // translucent navy
+                setStroke(dp(1), Color.argb(140, 0, 200, 220)) // cyan brand edge
+            }
+            visibility = View.GONE
+            setOnTouchListener { _, e -> onTrackpadTouch(e); true }
+        }
+        pad.addView(TextView(this).apply {
+            text = "🖱 trackpad"
+            setTextColor(Color.argb(130, 255, 255, 255))
+            textSize = 12f
+        }, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        root.addView(pad, FrameLayout.LayoutParams(dp(300), dp(168), Gravity.BOTTOM or Gravity.END).apply {
+            rightMargin = dp(16); bottomMargin = dp(16)
+        })
+        trackpad = pad
+
+        // Corner toggles: trackpad on the left, keyboard on the right.
+        val padBtn = Button(this).apply {
+            text = "🖱"
+            setOnClickListener {
+                trackpad.visibility = if (trackpad.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            }
+        }
+        root.addView(padBtn, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.START))
+
         val kbBtn = Button(this).apply {
             text = "⌨"
             setOnClickListener { toggleKeyboard() }
@@ -129,6 +166,8 @@ class DesktopMirrorActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.END))
     }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     override fun onDestroy() {
         super.onDestroy()
@@ -367,6 +406,79 @@ class DesktopMirrorActivity : Activity() {
             }
         }
     }
+
+    // ---- relative trackpad (the optional pad) -------------------------------
+
+    private var tpDownX = 0f
+    private var tpDownY = 0f
+    private var tpLastX = 0f
+    private var tpLastY = 0f
+    private var tpMoved = false
+    private var tpRightDone = false
+    private var tpScrolling = false
+    private var tpScrollAccum = 0f
+    private var tpLastScrollY = 0f
+    private var tpRemX = 0f   // sub-pixel carry so slow drags aren't lost to rounding
+    private var tpRemY = 0f
+    private var tpLongPress: Runnable? = null
+
+    private fun onTrackpadTouch(e: MotionEvent) {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                tpDownX = e.x; tpDownY = e.y; tpLastX = e.x; tpLastY = e.y
+                tpMoved = false; tpRightDone = false; tpScrolling = false
+                tpRemX = 0f; tpRemY = 0f
+                tpLongPress = Runnable {
+                    if (!tpMoved && !tpScrolling) {
+                        tpRightDone = true
+                        pc { put("action", "click"); put("button", "right") }
+                    }
+                }
+                ui.postDelayed(tpLongPress!!, LONG_PRESS_MS)
+            }
+
+            MotionEvent.ACTION_POINTER_DOWN -> { // second finger => scroll
+                cancelTpLongPress()
+                tpScrolling = true
+                tpScrollAccum = 0f
+                tpLastScrollY = avgY(e)
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (tpScrolling && e.pointerCount >= 2) {
+                    val y = avgY(e)
+                    tpScrollAccum += y - tpLastScrollY
+                    tpLastScrollY = y
+                    while (abs(tpScrollAccum) >= SCROLL_STEP) {
+                        val notch = if (tpScrollAccum > 0) 120 else -120
+                        pc { put("action", "scroll"); put("amount", notch) }
+                        tpScrollAccum -= if (tpScrollAccum > 0) SCROLL_STEP else -SCROLL_STEP
+                    }
+                } else if (!tpScrolling && e.pointerCount == 1) {
+                    val rawDx = (e.x - tpLastX) * TRACKPAD_SENS + tpRemX
+                    val rawDy = (e.y - tpLastY) * TRACKPAD_SENS + tpRemY
+                    val dx = rawDx.roundToInt(); val dy = rawDy.roundToInt()
+                    tpRemX = rawDx - dx; tpRemY = rawDy - dy
+                    tpLastX = e.x; tpLastY = e.y
+                    if (!tpMoved && abs(e.x - tpDownX) + abs(e.y - tpDownY) > TOUCH_SLOP) {
+                        tpMoved = true; cancelTpLongPress()
+                    }
+                    if (dx != 0 || dy != 0) pc { put("action", "move"); put("dx", dx); put("dy", dy) }
+                }
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                cancelTpLongPress()
+                // A quick, still tap (that didn't become a drag, scroll, or long-press) is a left click.
+                if (!tpMoved && !tpScrolling && !tpRightDone) {
+                    pc { put("action", "click"); put("button", "left") }
+                }
+                tpScrolling = false
+            }
+        }
+    }
+
+    private fun cancelTpLongPress() { tpLongPress?.let { ui.removeCallbacks(it) }; tpLongPress = null }
 
     private fun avgY(e: MotionEvent): Float {
         var sum = 0f
