@@ -12,14 +12,24 @@ android {
         applicationId = "io.conduit"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 4
+        versionName = "1.3.2"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../conduit-release.jks")
+            storePassword = "conduit123"
+            keyAlias = "conduit"
+            keyPassword = "conduit123"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

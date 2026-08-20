@@ -155,6 +155,16 @@ public sealed class FileTransferService
         string transferId = packet.GetString("transferId") ?? "";
         string name = Path.GetFileName(packet.GetString("name") ?? "conduit-file");
         long size = packet.GetLong("size");
+
+        // A transfer already in flight under this id means a duplicate offer (e.g. the
+        // same send arriving over two connections). Ignore it so we don't reopen the
+        // destination file and truncate the bytes already written.
+        if (_incoming.ContainsKey(transferId))
+        {
+            _log.Warning("Duplicate file offer for transfer {Id} ({Name}); ignoring", transferId, name);
+            return;
+        }
+
         string dest = UniquePath(Path.Combine(_downloadFolder, name));
 
         var incoming = new Incoming

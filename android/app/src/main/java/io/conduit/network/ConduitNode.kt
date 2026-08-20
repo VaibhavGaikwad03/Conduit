@@ -110,8 +110,13 @@ class ConduitNode(private val store: AppStore) {
             log.i("Discovered ${device.name}")
             onDevicesChanged?.invoke()
         }
+        // Only one side dials (the smaller deviceId); the other only accepts. Both sides
+        // auto-dialing races to open two sockets at once and can "glare" — each keeps a
+        // different one and closes the other — which churns the session and breaks
+        // transfers. Explicit/pairing connects bypass this.
         if (store.isPaired(device.deviceId) && !peers.containsKey(device.deviceId) && device.ipAddress != null &&
-            !suppressReconnect.contains(device.deviceId)
+            !suppressReconnect.contains(device.deviceId) &&
+            self.deviceId < device.deviceId
         ) {
             connect(device)
         }
@@ -140,18 +145,32 @@ class ConduitNode(private val store: AppStore) {
             // A completed session means someone reconnected on purpose — allow auto-reconnect again.
             suppressReconnect.remove(peer.deviceId)
             peer.isPaired = store.isPaired(peer.deviceId)
-            peers[peer.deviceId] = conn
-            known[peer.deviceId] = peer
-            log.i("Peer connected: ${peer.name} (paired=${peer.isPaired})")
-            onPeerConnected?.invoke(peer)
-            onDevicesChanged?.invoke()
+
+            // Keep exactly one live session per peer. A burst of duplicate connections
+            // (both sides dialing, or several beacons before the first handshake lands)
+            // would otherwise let a single file's packets race across sockets and truncate
+            // session-based transfers. Adopt the first connection to arrive and drop any
+            // later duplicate — never the established one, which may be mid-transfer.
+            val existing = peers.putIfAbsent(peer.deviceId, conn)
+            if (existing != null && existing !== conn) {
+                log.i("Duplicate session with ${peer.name}; dropping the redundant connection")
+                conn.close()
+            } else {
+                known[peer.deviceId] = peer
+                log.i("Peer connected: ${peer.name} (paired=${peer.isPaired})")
+                onPeerConnected?.invoke(peer)
+                onDevicesChanged?.invoke()
+            }
         }
         conn.onPacket = { packet -> conn.peer?.let { onIncoming(conn, it, packet) } }
         conn.onDisconnected = {
             conn.peer?.let { p ->
-                peers.remove(p.deviceId)
-                onPeerDisconnected?.invoke(p)
-                onDevicesChanged?.invoke()
+                // Only the currently-registered connection owns the peer entry. A superseded
+                // duplicate closing must not evict the live session or fire "disconnected".
+                if (peers.remove(p.deviceId, conn)) {
+                    onPeerDisconnected?.invoke(p)
+                    onDevicesChanged?.invoke()
+                }
             }
         }
     }

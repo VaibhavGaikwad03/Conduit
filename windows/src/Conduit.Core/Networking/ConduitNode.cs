@@ -141,9 +141,13 @@ public sealed class ConduitNode : IAsyncDisposable
         }
 
         // Auto-connect to paired peers that aren't connected yet — unless the user
-        // manually disconnected this one.
+        // manually disconnected this one. Only one side dials (the smaller DeviceId);
+        // the other only accepts. Both sides auto-dialing races to open two sockets at
+        // once and can "glare" — each keeps a different one and closes the other — which
+        // churns the session and breaks transfers. Explicit/pairing connects bypass this.
         if (device.IsPaired && !_peers.ContainsKey(device.DeviceId) && device.IpAddress is not null
-            && !_suppressReconnect.ContainsKey(device.DeviceId))
+            && !_suppressReconnect.ContainsKey(device.DeviceId)
+            && string.CompareOrdinal(_self.DeviceId, device.DeviceId) < 0)
             _ = ConnectAsync(device);
     }
 
@@ -174,7 +178,19 @@ public sealed class ConduitNode : IAsyncDisposable
             // A completed session means someone reconnected on purpose — allow auto-reconnect again.
             _suppressReconnect.TryRemove(peer.DeviceId, out byte _);
             peer.IsPaired = _store.IsPaired(peer.DeviceId);
-            _peers[peer.DeviceId] = conn;
+
+            // Keep exactly one live session per peer. A burst of duplicate connections
+            // (both sides dialing, or several beacons before the first handshake lands)
+            // would otherwise let a single file's packets race across sockets and
+            // truncate session-based transfers. Adopt the first connection to arrive and
+            // drop any later duplicate — never the established one, which may be mid-transfer.
+            if (!_peers.TryAdd(peer.DeviceId, conn))
+            {
+                _log.Information("Duplicate session with {Peer}; dropping the redundant connection", peer);
+                _ = conn.DisposeAsync();
+                return;
+            }
+
             _known[peer.DeviceId] = peer;
             _log.Information("Peer connected: {Peer} (paired={Paired})", peer, peer.IsPaired);
             PeerConnected?.Invoke(this, peer);
@@ -183,13 +199,17 @@ public sealed class ConduitNode : IAsyncDisposable
         conn.PacketReceived += (_, packet) => OnPacket(conn, packet);
         conn.Disconnected += (_, _) =>
         {
-            if (conn.Peer is { } p)
-            {
-                _peers.TryRemove(p.DeviceId, out _);
-                p.State = ConnectionState.Disconnected;
-                PeerDisconnected?.Invoke(this, p);
-                DevicesChanged?.Invoke(this, EventArgs.Empty);
-            }
+            if (conn.Peer is not { } p) return;
+
+            // Only the currently-registered connection owns the peer entry. A superseded
+            // duplicate that closes must not evict the live session or fire "disconnected".
+            bool wasCurrent = ((ICollection<KeyValuePair<string, PeerConnection>>)_peers)
+                .Remove(new KeyValuePair<string, PeerConnection>(p.DeviceId, conn));
+            if (!wasCurrent) return;
+
+            p.State = ConnectionState.Disconnected;
+            PeerDisconnected?.Invoke(this, p);
+            DevicesChanged?.Invoke(this, EventArgs.Empty);
         };
     }
 

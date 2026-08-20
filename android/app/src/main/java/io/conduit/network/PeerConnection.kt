@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,6 +28,11 @@ class PeerConnection(
     private val log = ConduitLog.tag("Connection")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val writeLock = Mutex()
+    // All outgoing packets funnel through one FIFO queue drained by a single writer, so the
+    // bytes hit the socket in the exact order send() was called. Without this, launching a
+    // coroutine per packet let them race — a file's FILE_COMPLETE could overtake its chunks,
+    // and the receiver would finalise an empty/truncated file.
+    private val sendQueue = Channel<Packet>(Channel.UNLIMITED)
     private val input = socket.getInputStream()
     private val output = socket.getOutputStream()
 
@@ -43,6 +49,7 @@ class PeerConnection(
             try {
                 sendIdentity()
                 receiveIdentity()
+                scope.launch { writeLoop() }
                 readLoop()
             } catch (e: Exception) {
                 log.w(e, "Session with ${peer?.name} ended")
@@ -103,14 +110,25 @@ class PeerConnection(
     }
 
     fun send(packet: Packet) {
-        val c = cipher ?: run { log.w("Cannot send ${packet.type} before handshake"); return }
-        scope.launch {
-            try {
-                val frame = c.encrypt(packet.toJson().toByteArray())
-                writeLock.withLock { FrameCodec.writeFrame(output, frame) }
-            } catch (e: Exception) {
-                log.w(e, "Send ${packet.type} failed")
+        if (cipher == null) { log.w("Cannot send ${packet.type} before handshake"); return }
+        // Hand off to the single writer; ordering is preserved by the queue, not by luck.
+        sendQueue.trySend(packet)
+    }
+
+    /** The one place packets are written. Drains the queue in FIFO order so socket order == send order. */
+    private suspend fun writeLoop() {
+        val c = cipher ?: return
+        try {
+            for (packet in sendQueue) {
+                try {
+                    val frame = c.encrypt(packet.toJson().toByteArray())
+                    writeLock.withLock { FrameCodec.writeFrame(output, frame) }
+                } catch (e: Exception) {
+                    log.w(e, "Send ${packet.type} failed")
+                }
             }
+        } catch (_: Exception) {
+            // Channel closed / scope cancelled — nothing more to write.
         }
     }
 
@@ -135,6 +153,7 @@ class PeerConnection(
     }
 
     fun close() {
+        sendQueue.close()
         scope.cancel()
         runCatching { socket.close() }
     }
