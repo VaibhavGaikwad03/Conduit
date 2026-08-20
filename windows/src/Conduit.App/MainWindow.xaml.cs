@@ -127,6 +127,17 @@ public partial class MainWindow : Window
         await _node.DisconnectAsync(device.DeviceId);
     }
 
+    /// <summary>Forget a paired device — drops the session, deletes the pairing, removes it from the list.</summary>
+    private async void OnForget(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: DeviceRow row }) return;
+        var confirm = MessageBox.Show(
+            $"Forget “{row.Name}”?\n\nThis removes the pairing. You'll need to pair again to reconnect.",
+            "Forget device", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+        await _node.ForgetAsync(row.DeviceId);
+    }
+
     // ---- Dashboard actions ----------------------------------------------------
 
     private async void OnSendClipboard(object sender, RoutedEventArgs e)

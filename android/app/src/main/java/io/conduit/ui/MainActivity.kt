@@ -273,6 +273,11 @@ private fun ConduitScreen(
         ConduitRuntime.lastEvent.value = "Disconnected from ${device.name}"
     }
 
+    fun forget(device: DeviceInfo) {
+        ConduitRuntime.node?.forget(device.deviceId)
+        ConduitRuntime.lastEvent.value = "Forgot ${device.name}"
+    }
+
     fun searchFiles(device: DeviceInfo, query: String) {
         val q = query.trim()
         if (q.length < 2) {
@@ -417,6 +422,7 @@ private fun ConduitScreen(
                 onOpenLink = { url -> openDevice?.let { openLinkOnPc(it, url) } },
                 onPairOrConnect = { openDevice?.let { pairOrConnect(it) } },
                 onDisconnect = { openDevice?.let { disconnect(it) } },
+                onForget = { openDevice?.let { forget(it) } },
             )
         }
     }
@@ -655,6 +661,7 @@ private fun MainContent(
     onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onForget: () -> Unit,
 ) {
     Column(
         Modifier
@@ -725,6 +732,7 @@ private fun MainContent(
                     onOpenLink = onOpenLink,
                     onPairOrConnect = onPairOrConnect,
                     onDisconnect = onDisconnect,
+                    onForget = onForget,
                 )
             }
 
@@ -786,7 +794,25 @@ private fun DeviceDetail(
     onOpenLink: (String) -> Unit,
     onPairOrConnect: () -> Unit,
     onDisconnect: () -> Unit,
+    onForget: () -> Unit,
 ) {
+    var showForgetConfirm by remember(device.deviceId) { mutableStateOf(false) }
+    if (showForgetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showForgetConfirm = false },
+            title = { Text("Forget ${device.name}?") },
+            text = { Text("This removes the pairing. You'll need to pair again to reconnect.") },
+            confirmButton = {
+                TextButton(onClick = { showForgetConfirm = false; onForget() }) {
+                    Text("Forget", color = Warn, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgetConfirm = false }) { Text("Cancel", color = TextMuted) }
+            },
+        )
+    }
+
     val statusColor = when {
         connected && device.isPaired -> Success
         connected -> Warn            // connected but not paired — can't use features yet
@@ -853,6 +879,11 @@ private fun DeviceDetail(
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.fillMaxWidth().height(46.dp),
         ) { Text("Disconnect", color = Warn, fontWeight = FontWeight.SemiBold) }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = { showForgetConfirm = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Forget this device", color = TextMuted, fontWeight = FontWeight.SemiBold) }
     } else {
         Card(
             colors = CardDefaults.cardColors(containerColor = Card),
@@ -879,6 +910,13 @@ private fun DeviceDetail(
                     modifier = Modifier.fillMaxWidth().height(46.dp),
                 ) {
                     Text(if (device.isPaired) "Connect" else "Pair", fontWeight = FontWeight.SemiBold)
+                }
+                if (device.isPaired) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = { showForgetConfirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Forget this device", color = TextMuted, fontWeight = FontWeight.SemiBold) }
                 }
             }
         }

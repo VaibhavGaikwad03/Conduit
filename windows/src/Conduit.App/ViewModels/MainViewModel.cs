@@ -351,6 +351,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RefreshDevices()
     {
+        // Drop rows for devices that are no longer known (e.g. just forgotten).
+        var live = _node.KnownDevices.Select(d => d.DeviceId).ToHashSet();
+        for (int i = Devices.Count - 1; i >= 0; i--)
+            if (!live.Contains(Devices[i].DeviceId))
+                Devices.RemoveAt(i);
+
         foreach (var dev in _node.KnownDevices)
         {
             var row = Devices.FirstOrDefault(d => d.DeviceId == dev.DeviceId);

@@ -84,6 +84,14 @@ public sealed class ConduitNode : IAsyncDisposable
     {
         _cts = new CancellationTokenSource();
 
+        // Surface remembered peers up front (as offline) so the user can see and manage
+        // them before any beacon arrives — including stale ones left by a peer reinstall.
+        foreach (var p in _store.Config.PairedDevices)
+            _known.TryAdd(p.DeviceId, new DeviceInfo
+            {
+                DeviceId = p.DeviceId, Name = p.Name, Type = p.Type, IsPaired = true
+            });
+
         _listener = new TcpListener(IPAddress.Any, ConduitPorts.Tcp);
         _listener.Start();
         _acceptTask = Task.Run(() => AcceptLoopAsync(_cts.Token));
@@ -368,6 +376,21 @@ public sealed class ConduitNode : IAsyncDisposable
             catch (Exception ex) { _log.Debug(ex, "Could not send disconnect notice to {Id}", deviceId); }
             await conn.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Forget a device completely: drop any live session, delete the stored pairing, and remove
+    /// it from the device list. Used to clear out stale entries (e.g. a peer that was reinstalled
+    /// and now shows up under a new identity, leaving the old one orphaned).
+    /// </summary>
+    public async Task ForgetAsync(string deviceId)
+    {
+        await DisconnectAsync(deviceId).ConfigureAwait(false);
+        _store.RemovePaired(deviceId);
+        _known.TryRemove(deviceId, out _);
+        _suppressReconnect.TryRemove(deviceId, out _);
+        _log.Information("Forgot device {Id}", deviceId);
+        DevicesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task<bool> SendToAsync(string deviceId, Packet packet)

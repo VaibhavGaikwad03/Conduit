@@ -66,6 +66,15 @@ class ConduitNode(private val store: AppStore) {
     val knownDevices: List<DeviceInfo> get() = known.values.toList()
 
     fun start() {
+        // Surface remembered peers up front (as offline) so the user can see and manage them
+        // before any beacon arrives — including stale ones left by a peer reinstall.
+        for (p in store.pairedDevices()) {
+            known.putIfAbsent(
+                p.deviceId,
+                DeviceInfo(deviceId = p.deviceId, name = p.name, type = p.type, isPaired = true),
+            )
+        }
+
         val server = ServerSocket().apply {
             reuseAddress = true
             bind(InetSocketAddress(Ports.TCP))
@@ -302,6 +311,20 @@ class ConduitNode(private val store: AppStore) {
             // Tell the peer so it also stops auto-reconnecting, then close.
             conn.closeWith(Packet.create(PacketType.DISCONNECT))
         }
+    }
+
+    /**
+     * Forget a device completely: drop any live session, delete the stored pairing, and remove
+     * it from the device list. Clears out stale entries (e.g. a peer reinstalled under a new
+     * identity, leaving the old one orphaned).
+     */
+    fun forget(deviceId: String) {
+        disconnect(deviceId)
+        store.removePaired(deviceId)
+        known.remove(deviceId)
+        suppressReconnect.remove(deviceId)
+        log.i("Forgot device $deviceId")
+        onDevicesChanged?.invoke()
     }
 
     fun sendTo(deviceId: String, packet: Packet): Boolean {

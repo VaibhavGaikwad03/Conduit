@@ -81,6 +81,9 @@
                                 <Button Style="{StaticResource GhostButton}" Height="32"
                                         Content="Disconnect" Click="OnDisconnect"
                                         Visibility="{Binding Connected, Converter={StaticResource BoolToVis}}"/>
+                                <Button Style="{StaticResource GhostButton}" Height="32" Margin="8,0,0,0"
+                                        Content="Forget" Click="OnForget"
+                                        Visibility="{Binding Paired, Converter={StaticResource BoolToVis}}"/>
                             </StackPanel>
                         </Grid>
                     </Border>
