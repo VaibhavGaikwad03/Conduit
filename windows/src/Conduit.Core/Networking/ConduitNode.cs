@@ -41,6 +41,10 @@ public sealed class ConduitNode : IAsyncDisposable
     // Devices the user manually disconnected: don't auto-reconnect until they reconnect.
     private readonly ConcurrentDictionary<string, byte> _suppressReconnect = new();
 
+    // Devices with an outbound dial already in flight — stops a second beacon from
+    // opening a duplicate connection before the first has finished its handshake.
+    private readonly ConcurrentDictionary<string, byte> _connecting = new();
+
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptTask;
@@ -156,6 +160,8 @@ public sealed class ConduitNode : IAsyncDisposable
         // An explicit connect clears any manual-disconnect suppression.
         _suppressReconnect.TryRemove(device.DeviceId, out _);
         if (_peers.ContainsKey(device.DeviceId) || device.IpAddress is null) return;
+        // Coalesce concurrent dials: if one is already in flight for this device, skip.
+        if (!_connecting.TryAdd(device.DeviceId, 0)) return;
         try
         {
             _log.Information("Connecting to {Device} @ {Ip}:{Port}", device, device.IpAddress, device.TcpPort);
@@ -168,6 +174,10 @@ public sealed class ConduitNode : IAsyncDisposable
         catch (Exception ex)
         {
             _log.Warning(ex, "Failed to connect to {Device}", device);
+        }
+        finally
+        {
+            _connecting.TryRemove(device.DeviceId, out _);
         }
     }
 

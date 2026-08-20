@@ -47,6 +47,10 @@ class ConduitNode(private val store: AppStore) {
 
     // Devices the user manually disconnected: don't auto-reconnect until they reconnect.
     private val suppressReconnect = ConcurrentHashMap.newKeySet<String>()
+
+    // Devices with an outbound dial already in flight — stops a second beacon from
+    // opening a duplicate connection before the first has finished its handshake.
+    private val connecting = ConcurrentHashMap.newKeySet<String>()
     private val discovery = DeviceDiscovery(self, ::onBeacon)
     private var serverSocket: ServerSocket? = null
 
@@ -126,6 +130,8 @@ class ConduitNode(private val store: AppStore) {
         // An explicit connect clears any manual-disconnect suppression.
         suppressReconnect.remove(device.deviceId)
         if (peers.containsKey(device.deviceId) || device.ipAddress == null) return
+        // Coalesce concurrent dials: if one is already in flight for this device, skip.
+        if (!connecting.add(device.deviceId)) return
         scope.launch {
             try {
                 log.i("Connecting to ${device.name} @ ${device.ipAddress}:${device.tcpPort}")
@@ -136,6 +142,8 @@ class ConduitNode(private val store: AppStore) {
                 conn.start()
             } catch (e: Exception) {
                 log.w(e, "Failed to connect to ${device.name}")
+            } finally {
+                connecting.remove(device.deviceId)
             }
         }
     }
