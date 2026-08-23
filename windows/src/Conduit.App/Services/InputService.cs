@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Conduit.Core.Logging;
@@ -133,23 +134,88 @@ public sealed class InputService
 
     public void Key(string name)
     {
-        ushort vk = name switch
-        {
-            "enter"     => 0x0D,
-            "backspace" => 0x08,
-            "tab"       => 0x09,
-            "escape"    => 0x1B,
-            "up"        => 0x26,
-            "down"      => 0x28,
-            "left"      => 0x25,
-            "right"     => 0x27,
-            "home"      => 0x24,
-            "end"       => 0x23,
-            _           => 0,
-        };
+        ushort vk = VkFor(name);
         if (vk == 0) { _log.Warning("Unknown key {Key}", name); return; }
         SendKey(vk, false);
         SendKey(vk, true);
+    }
+
+    /// <summary>
+    /// Presses a chord like Ctrl+C or Ctrl+Alt+Del: holds each modifier in <paramref name="mods"/>
+    /// (a '+'-joined list of ctrl/alt/shift/win), taps <paramref name="key"/>, then releases the
+    /// modifiers in reverse. This is what the phone's on-screen PC keyboard sends when a modifier
+    /// key is armed — plain typing still comes through as Unicode <see cref="Type"/>.
+    /// </summary>
+    public void KeyCombo(string mods, string key)
+    {
+        var held = (mods ?? "")
+            .Split('+', StringSplitOptions.RemoveEmptyEntries)
+            .Select(ModVk).Where(v => v != 0).Distinct().ToList();
+
+        foreach (var v in held) SendKey(v, false);
+        ushort vk = VkFor(key);
+        if (vk != 0) { SendKey(vk, false); SendKey(vk, true); }
+        else _log.Warning("Combo with unknown key {Key}", key);
+        // Release in reverse so nested modifiers unwind cleanly.
+        for (int i = held.Count - 1; i >= 0; i--) SendKey(held[i], true);
+    }
+
+    private static ushort ModVk(string m) => m.Trim().ToLowerInvariant() switch
+    {
+        "ctrl" or "control" => 0x11,
+        "alt"               => 0x12,
+        "shift"             => 0x10,
+        "win" or "meta"     => 0x5B,
+        _                   => 0,
+    };
+
+    /// <summary>Maps a key name to a Win32 virtual-key code. Single characters map to their letter,
+    /// digit, or (US-layout) OEM punctuation code so chords like Ctrl+- work; longer names cover the
+    /// special keys (function row, arrows, editing block). Returns 0 for anything unmapped.</summary>
+    private static ushort VkFor(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return 0;
+
+        if (name.Length == 1)
+        {
+            char c = char.ToLowerInvariant(name[0]);
+            if (c >= 'a' && c <= 'z') return (ushort)(0x41 + (c - 'a'));
+            if (c >= '0' && c <= '9') return (ushort)(0x30 + (c - '0'));
+            return c switch
+            {
+                ' '  => 0x20,
+                '-'  => 0xBD, '=' => 0xBB, '[' => 0xDB, ']' => 0xDD, '\\' => 0xDC,
+                ';'  => 0xBA, '\'' => 0xDE, ',' => 0xBC, '.' => 0xBE, '/' => 0xBF, '`' => 0xC0,
+                _    => 0,
+            };
+        }
+
+        // Function keys F1..F12.
+        if ((name[0] == 'f' || name[0] == 'F') &&
+            int.TryParse(name.AsSpan(1), out var fn) && fn is >= 1 and <= 12)
+            return (ushort)(0x70 + (fn - 1));
+
+        return name.ToLowerInvariant() switch
+        {
+            "enter"       => 0x0D,
+            "backspace"   => 0x08,
+            "tab"         => 0x09,
+            "escape" or "esc" => 0x1B,
+            "space"       => 0x20,
+            "up"          => 0x26,
+            "down"        => 0x28,
+            "left"        => 0x25,
+            "right"       => 0x27,
+            "home"        => 0x24,
+            "end"         => 0x23,
+            "pageup"      => 0x21,
+            "pagedown"    => 0x22,
+            "insert"      => 0x2D,
+            "delete" or "del" => 0x2E,
+            "capslock"    => 0x14,
+            "printscreen" => 0x2C,
+            _             => 0,
+        };
     }
 
     // ---- Win32 SendInput plumbing ----

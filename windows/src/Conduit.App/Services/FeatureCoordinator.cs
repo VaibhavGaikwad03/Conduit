@@ -242,6 +242,7 @@ public sealed class FeatureCoordinator
             case "scroll":  _input.Scroll(packet.GetInt("amount")); break;
             case "text":    _input.Type(packet.GetString("text") ?? ""); break;
             case "key":     _input.Key(packet.GetString("key") ?? ""); break;
+            case "combo":   _input.KeyCombo(packet.GetString("mods") ?? "", packet.GetString("key") ?? ""); break;
             // Absolute (direct-touch) actions used while the phone views the PC desktop.
             case "moveabs": _input.MoveAbsolute(packet.GetDouble("x"), packet.GetDouble("y")); break;
             case "down":    _input.MouseDown(packet.GetString("button") ?? "left"); break;

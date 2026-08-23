@@ -1,7 +1,6 @@
 package io.conduit.ui
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.graphics.Color
@@ -11,8 +10,6 @@ import android.media.MediaFormat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.Surface
@@ -20,10 +17,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -70,7 +64,7 @@ class DesktopMirrorActivity : Activity() {
 
     private lateinit var root: FrameLayout
     private lateinit var surfaceView: SurfaceView
-    private lateinit var keyInput: EditText
+    private lateinit var pcKeyboard: PcKeyboardView
     private lateinit var trackpad: View
 
     @Volatile private var surface: Surface? = null
@@ -116,15 +110,6 @@ class DesktopMirrorActivity : Activity() {
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER))
         surfaceView.setOnTouchListener { _, e -> onTouch(e); true }
 
-        // Hidden field that captures soft-keyboard input to forward to the PC.
-        keyInput = EditText(this).apply {
-            alpha = 0f
-            setSingleLine(false)
-            imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
-        }
-        wireKeyboard()
-        root.addView(keyInput, FrameLayout.LayoutParams(1, 1))
-
         // Optional relative trackpad: a small translucent pad you drag like a laptop touchpad for
         // precise cursor control (direct-touch on the picture stays available when it's hidden).
         val pad = FrameLayout(this).apply {
@@ -165,6 +150,21 @@ class DesktopMirrorActivity : Activity() {
         root.addView(kbBtn, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.END))
+
+        // A full laptop-style keyboard along the bottom: function row, real modifiers and arrows so
+        // chords (Ctrl+C, Alt+Tab, Ctrl+Alt+Del) reach the PC — things the Android IME can't send.
+        pcKeyboard = PcKeyboardView(this).apply {
+            visibility = View.GONE
+            listener = object : PcKeyboardView.Listener {
+                override fun onText(text: String) { pc { put("action", "text"); put("text", text) } }
+                override fun onKey(key: String) { pc { put("action", "key"); put("key", key) } }
+                override fun onCombo(mods: String, key: String) {
+                    pc { put("action", "combo"); put("mods", mods); put("key", key) }
+                }
+            }
+        }
+        root.addView(pcKeyboard, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, dp(215), Gravity.BOTTOM))
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -496,33 +496,9 @@ class DesktopMirrorActivity : Activity() {
 
     // ---- keyboard -----------------------------------------------------------
 
-    private fun wireKeyboard() {
-        keyInput.addTextChangedListener(object : TextWatcher {
-            private var prev = ""
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val cur = s?.toString() ?: ""
-                if (cur.length > prev.length) {
-                    val added = cur.substring(prev.length)
-                    for (ch in added) {
-                        if (ch == '\n') pc { put("action", "key"); put("key", "enter") }
-                        else pc { put("action", "text"); put("text", ch.toString()) }
-                    }
-                } else if (cur.length < prev.length) {
-                    repeat(prev.length - cur.length) { pc { put("action", "key"); put("key", "backspace") } }
-                }
-                prev = cur
-                // Keep the buffer from growing without bound.
-                if (cur.length > 512) { keyInput.setText(""); prev = "" }
-            }
-        })
-    }
-
     private fun toggleKeyboard() {
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        keyInput.requestFocus()
-        imm.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+        pcKeyboard.visibility =
+            if (pcKeyboard.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
     // ---- control packets ----------------------------------------------------
