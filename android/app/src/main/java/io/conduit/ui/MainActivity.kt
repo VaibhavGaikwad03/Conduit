@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Language
@@ -67,6 +68,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -783,7 +785,7 @@ private fun MainContent(
             // ---- Active transfers ----
             if (transfers.isNotEmpty()) {
                 Spacer(Modifier.height(20.dp))
-                SectionLabel("FILE TRANSFERS")
+                CardTitle("File transfers")
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Card),
                     shape = RoundedCornerShape(14.dp),
@@ -878,46 +880,56 @@ private fun DeviceDetail(
     }
 
     if (connected && device.isPaired) {
-        SectionLabel("SEND TO THIS DEVICE")
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Card),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column {
-                ActionRow(Icons.AutoMirrored.Rounded.Send, "Send file", "Pick a file to send to this device", onSendFile)
-                RowDivider()
-                ActionRow(Icons.Rounded.ContentPaste, "Send clipboard", "Copy text here, then send it over", onSendClipboard)
+        var tab by rememberSaveable(device.deviceId) { mutableStateOf(0) }
+        FeatureTabs(tab) { tab = it }
+        Spacer(Modifier.height(20.dp))
+        when (tab) {
+            0 -> {
+                CardTitle("Send to this device")
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Card),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column {
+                        ActionRow(Icons.AutoMirrored.Rounded.Send, "Send file", "Pick a file to send to this device", onSendFile)
+                        RowDivider()
+                        ActionRow(Icons.Rounded.ContentPaste, "Send clipboard", "Copy text here, then send it over", onSendClipboard)
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+                CardTitle("Open a link on the PC")
+                OpenLinkCard(onOpenLink)
+            }
+            1 -> {
+                CardTitle("Search files on the PC")
+                FileSearchCard(onSearch, onDownload)
+                Spacer(Modifier.height(20.dp))
+                CardTitle("Browse files on the PC")
+                FileBrowseCard(onBrowse, onBrowseEnter, onBrowseUp, onBrowseDownload)
+            }
+            2 -> {
+                CardTitle("Mirror & control")
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Card),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ActionRow(Icons.Rounded.Cast, "Mirror & control PC", "See the PC screen and tap to control it", onViewScreen)
+                }
+                Spacer(Modifier.height(20.dp))
+                CardTitle("Touchpad")
+                TouchpadCard(onPcInput)
+            }
+            else -> {
+                CardTitle("Control the PC")
+                ControlPcCard(onRemoteCommand)
+                Spacer(Modifier.height(20.dp))
+                CardTitle("Media remote")
+                MediaRemoteCard(onMediaCommand)
             }
         }
         Spacer(Modifier.height(20.dp))
-        SectionLabel("OPEN LINK ON PC")
-        OpenLinkCard(onOpenLink)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("SEARCH FILES ON PC")
-        FileSearchCard(onSearch, onDownload)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("BROWSE FILES ON PC")
-        FileBrowseCard(onBrowse, onBrowseEnter, onBrowseUp, onBrowseDownload)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("VIEW PC SCREEN")
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Card),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            ActionRow(Icons.Rounded.Cast, "Mirror & control PC", "See the PC screen and tap to control it", onViewScreen)
-        }
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("TOUCHPAD")
-        TouchpadCard(onPcInput)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("CONTROL PC")
-        ControlPcCard(onRemoteCommand)
-        Spacer(Modifier.height(20.dp))
-        SectionLabel("CONTROL PC MEDIA")
-        MediaRemoteCard(onMediaCommand)
-        Spacer(Modifier.height(12.dp))
         OutlinedButton(
             onClick = onDisconnect,
             shape = RoundedCornerShape(10.dp),
@@ -1557,9 +1569,59 @@ private fun TransferItem(t: TransferUi) {
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text, color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        text, color = Faint, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(bottom = 10.dp),
     )
+}
+
+/** A card heading — mixed-case and prominent, matching the Windows app's card titles. */
+@Composable
+private fun CardTitle(text: String) {
+    Text(
+        text, color = TextHi, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(bottom = 12.dp),
+    )
+}
+
+/** The feature tab bar (Overview / Files / Screen / Control), matching the Windows tabs. */
+@Composable
+private fun FeatureTabs(selected: Int, onSelect: (Int) -> Unit) {
+    val tabs = listOf(
+        Icons.Rounded.Home to "Overview",
+        Icons.Rounded.Folder to "Files",
+        Icons.Rounded.Cast to "Screen",
+        Icons.Rounded.Tune to "Control",
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Card)
+            .border(1.dp, StrokeSoft, RoundedCornerShape(14.dp))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        tabs.forEachIndexed { index, (icon, label) ->
+            val active = index == selected
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (active) CardHi else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { onSelect(index) }
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(icon, contentDescription = label, tint = if (active) Cyan else TextMuted,
+                    modifier = Modifier.size(20.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    label, color = if (active) Cyan else TextMuted, fontSize = 11.sp,
+                    fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                )
+            }
+        }
+    }
 }
 
 @Composable
