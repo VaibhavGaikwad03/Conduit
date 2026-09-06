@@ -10,18 +10,21 @@
         <Color x:Key="BgColor">#0A1622</Color>
         <Color x:Key="BgColor2">#0D1D2C</Color>
         <SolidColorBrush x:Key="Bg" Color="#0A1622"/>
-        <SolidColorBrush x:Key="Card" Color="#132536"/>
-        <SolidColorBrush x:Key="CardHover" Color="#183048"/>
-        <SolidColorBrush x:Key="Stroke" Color="#22415C"/>
-        <SolidColorBrush x:Key="Cyan" Color="#2FC6E8"/>
+        <SolidColorBrush x:Key="SidebarBg" Color="#0B1A28"/>
+        <SolidColorBrush x:Key="Card" Color="#15293B"/>
+        <SolidColorBrush x:Key="CardHover" Color="#1D3A54"/>
+        <SolidColorBrush x:Key="Stroke" Color="#243F58"/>
+        <SolidColorBrush x:Key="StrokeSoft" Color="#1B3145"/>
+        <SolidColorBrush x:Key="Cyan" Color="#38CDEC"/>
         <SolidColorBrush x:Key="Blue" Color="#4F8CFF"/>
-        <SolidColorBrush x:Key="Fg" Color="#EAF2F8"/>
-        <SolidColorBrush x:Key="Muted" Color="#8DA0B4"/>
+        <SolidColorBrush x:Key="Fg" Color="#EDF3F8"/>
+        <SolidColorBrush x:Key="Muted" Color="#93A6B9"/>
+        <SolidColorBrush x:Key="Faint" Color="#6B7F93"/>
         <SolidColorBrush x:Key="Success" Color="#34D399"/>
         <SolidColorBrush x:Key="Warn" Color="#F5B44C"/>
 
         <LinearGradientBrush x:Key="AccentGrad" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#2FC6E8" Offset="0"/>
+            <GradientStop Color="#38CDEC" Offset="0"/>
             <GradientStop Color="#4F8CFF" Offset="1"/>
         </LinearGradientBrush>
         <LinearGradientBrush x:Key="WindowGrad" StartPoint="0,0" EndPoint="0,1">
@@ -29,26 +32,90 @@
             <GradientStop Color="#0A1420" Offset="1"/>
         </LinearGradientBrush>
 
+        <!-- Native Windows icon font (Win11 has Segoe Fluent Icons; Win10 falls back to MDL2). -->
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
         <!-- ============ Typography ============ -->
         <Style x:Key="H1" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontSize" Value="20"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="{StaticResource Fg}"/>
         </Style>
-        <Style x:Key="Section" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12"/>
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="Margin" Value="0,0,0,14"/>
+        </Style>
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource Faint}"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+        <Style x:Key="Icon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
         </Style>
 
         <!-- ============ Card ============ -->
         <Style x:Key="CardBorder" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource Card}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource Stroke}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeSoft}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="16"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="2" Opacity="0.28" Color="#00060C"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ============ Tab bar toggle (pill segment) ============ -->
+        <Style x:Key="TabToggle" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="8" Padding="18,10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#0AFFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Cyan}"/>
+                                <Setter TargetName="bg" Property="Background" Value="{StaticResource CardHover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- A tab panel that fades in when it becomes the visible tab. -->
+        <Style x:Key="TabPanel" TargetType="StackPanel">
+            <Style.Triggers>
+                <Trigger Property="IsVisible" Value="True">
+                    <Trigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="0" To="1" Duration="0:0:0.20"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.EnterActions>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <!-- ============ Primary button (accent gradient) ============ -->
@@ -56,18 +123,28 @@
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="{StaticResource AccentGrad}" CornerRadius="9"
-                                Padding="16,0">
+                        <Border x:Name="b" Background="{StaticResource AccentGrad}" CornerRadius="10"
+                                Padding="18,0" RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="b" Property="Opacity" Value="0.88"/>
+                                <Setter TargetName="b" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="b" Property="Opacity" Value="0.4"/>
@@ -83,18 +160,30 @@
             <Setter Property="Foreground" Value="{StaticResource Fg}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Height" Value="40"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="b" Background="#0FFFFFFF" BorderBrush="{StaticResource Stroke}"
-                                BorderThickness="1" CornerRadius="9" Padding="16,0">
+                        <Border x:Name="b" Background="#0AFFFFFF" BorderBrush="{StaticResource Stroke}"
+                                BorderThickness="1" CornerRadius="10" Padding="16,0"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="b" Property="Background" Value="{StaticResource CardHover}"/>
+                                <Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Cyan}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="b" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.97" ScaleY="0.97"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="b" Property="Opacity" Value="0.4"/>

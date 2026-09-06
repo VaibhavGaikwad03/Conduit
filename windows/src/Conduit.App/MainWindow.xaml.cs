@@ -74,7 +74,7 @@ public partial class MainWindow : Window
         var connected = _node.KnownDevices.FirstOrDefault(d => _node.IsConnected(d.DeviceId));
         if (connected is not null) return connected;
 
-        MessageBox.Show("Select a device first.", "Conduit");
+        _vm.ShowToast("Select a device first.");
         return null;
     }
 
@@ -144,8 +144,9 @@ public partial class MainWindow : Window
     {
         if (TargetDevice() is not { } device) return;
         string text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "";
-        if (string.IsNullOrEmpty(text)) { MessageBox.Show("Clipboard has no text.", "Conduit"); return; }
+        if (string.IsNullOrEmpty(text)) { _vm.ShowToast("Clipboard has no text to send."); return; }
         await _coordinator.SendClipboardAsync(device.DeviceId, text);
+        _vm.ShowToast($"📋  Clipboard sent to {device.Name}");
     }
 
     private async void OnSendFile(object sender, RoutedEventArgs e)
@@ -153,7 +154,10 @@ public partial class MainWindow : Window
         if (TargetDevice() is not { } device) return;
         var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Send file to phone" };
         if (dlg.ShowDialog() == true)
+        {
             await _coordinator.SendFileAsync(device.DeviceId, dlg.FileName);
+            _vm.ShowToast($"Sending {System.IO.Path.GetFileName(dlg.FileName)} to {device.Name}…");
+        }
     }
 
     private void OnSearchKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
@@ -170,9 +174,10 @@ public partial class MainWindow : Window
     {
         if (TargetDevice() is not { } d) return;
         string url = LinkBox.Text?.Trim() ?? "";
-        if (url.Length == 0) { MessageBox.Show("Enter a link to open.", "Conduit"); return; }
+        if (url.Length == 0) { _vm.ShowToast("Enter a link to open."); return; }
         await _coordinator.SendOpenLinkAsync(d.DeviceId, url);
         LinkBox.Clear();
+        _vm.ShowToast($"🌐  Opening link on {d.Name}…");
     }
 
     private async void OnSearchFiles(object sender, RoutedEventArgs e)
@@ -181,7 +186,7 @@ public partial class MainWindow : Window
         string query = SearchBox.Text?.Trim() ?? "";
         if (query.Length < 2)
         {
-            MessageBox.Show("Type at least 2 characters to search.", "Conduit");
+            _vm.ShowToast("Type at least 2 characters to search.");
             return;
         }
         var requestId = System.Guid.NewGuid().ToString("N");
@@ -241,7 +246,9 @@ public partial class MainWindow : Window
 
     private async void OnLockPhone(object sender, RoutedEventArgs e)
     {
-        if (TargetDevice() is { } d) await _coordinator.SendRemoteCommandAsync(d.DeviceId, "lock");
+        if (TargetDevice() is not { } d) return;
+        await _coordinator.SendRemoteCommandAsync(d.DeviceId, "lock");
+        _vm.ShowToast($"🔒  Locking {d.Name}…");
     }
 
     private bool _ringing;
@@ -252,13 +259,15 @@ public partial class MainWindow : Window
         {
             await _coordinator.SendRemoteCommandAsync(d.DeviceId, "ring-stop");
             _ringing = false;
-            RingButton.Content = "🔔  Ring phone";
+            RingLabel.Text = "Ring phone";
+            _vm.ShowToast($"Stopped ringing {d.Name}");
         }
         else
         {
             await _coordinator.SendRemoteCommandAsync(d.DeviceId, "ring");
             _ringing = true;
-            RingButton.Content = "🔕  Stop ringing";
+            RingLabel.Text = "Stop ringing";
+            _vm.ShowToast($"Ringing {d.Name}…");
         }
     }
 
@@ -297,14 +306,14 @@ public partial class MainWindow : Window
             }
             _webcamFacing = "front"; // the phone opens the front camera by default
             await _coordinator.SendWebcamStartAsync(d.DeviceId, VideoStreamReceiver.Port, _webcamFacing);
-            WebcamButton.Content = "🛑  Stop webcam";
+            WebcamLabel.Text = "Stop webcam";
             UpdateSwitchCameraButton(running: true);
         }
         else
         {
             await _coordinator.SendWebcamStopAsync(d.DeviceId);
             webcam.Stop();
-            WebcamButton.Content = "🎥  Use phone as webcam";
+            WebcamLabel.Text = "Use phone as webcam";
             UpdateSwitchCameraButton(running: false);
         }
     }
@@ -324,9 +333,9 @@ public partial class MainWindow : Window
     {
         SwitchCameraButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         SwitchCameraButton.IsEnabled = running;
-        SwitchCameraButton.Content = _webcamFacing == "front"
-            ? "🔄  Switch to back camera"
-            : "🔄  Switch to front camera";
+        SwitchCameraLabel.Text = _webcamFacing == "front"
+            ? "Switch to back camera"
+            : "Switch to front camera";
     }
 
     private async void OnToggleScreen(object sender, RoutedEventArgs e)
@@ -346,13 +355,13 @@ public partial class MainWindow : Window
             screen.Closed -= OnScreenClosed;
             screen.Closed += OnScreenClosed;
             await _coordinator.SendScreenStartAsync(d.DeviceId, VideoStreamReceiver.ScreenPort);
-            ScreenButton.Content = "🛑  Stop mirroring";
+            ScreenLabel.Text = "Stop mirroring";
         }
         else
         {
             await _coordinator.SendScreenStopAsync(d.DeviceId);
             screen.Stop();
-            ScreenButton.Content = "🖥  Mirror phone screen";
+            ScreenLabel.Text = "Mirror phone screen";
         }
     }
 
@@ -371,7 +380,7 @@ public partial class MainWindow : Window
         // The user closed the mirror window — tell the phone to stop and reset the button.
         Dispatcher.Invoke(() =>
         {
-            ScreenButton.Content = "🖥  Mirror phone screen";
+            ScreenLabel.Text = "Mirror phone screen";
             if (TargetDevice() is { } d) _ = _coordinator.SendScreenStopAsync(d.DeviceId);
         });
     }

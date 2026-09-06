@@ -82,7 +82,8 @@ public sealed class BrowseRow
     public required bool IsDir { get; init; }
     public bool IsFile => !IsDir;
     public required string Detail { get; init; }   // "Folder" or a formatted size
-    public string Icon => IsDir ? "📁" : "📄";
+    // Segoe Fluent Icons: Folder (E8B7) for directories, Page (E7C3) for files.
+    public string Icon => IsDir ? "\uE8B7" : "\uE7C3";
 }
 
 public sealed class MainViewModel : INotifyPropertyChanged
@@ -181,11 +182,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool HasDevices => Devices.Count > 0;
 
+    // ---- Toast / snackbar (transient action feedback) ----
+    private string _toastText = "";
+    public string ToastText { get => _toastText; set => Set(ref _toastText, value); }
+
+    private bool _toastVisible;
+    public bool ToastVisible { get => _toastVisible; set => Set(ref _toastVisible, value); }
+
+    private readonly System.Windows.Threading.DispatcherTimer _toastTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(3.5),
+    };
+
+    /// <summary>Flashes a short message at the bottom of the window; auto-dismisses after a few seconds.</summary>
+    public void ShowToast(string message)
+    {
+        ToastText = message;
+        ToastVisible = false;   // retrigger the slide-in animation even on back-to-back toasts
+        ToastVisible = true;
+        _toastTimer.Stop();
+        _toastTimer.Start();
+    }
+
     public MainViewModel(ConduitNode node, FeatureCoordinator coordinator, NotificationService notifications)
     {
         _node = node;
         _coordinator = coordinator;
         SelfName = node.Self.Name;
+
+        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); ToastVisible = false; };
 
         _node.DevicesChanged += (_, _) => Dispatch(RefreshDevices);
         _node.PeerConnected += (_, _) => Dispatch(RefreshDevices);
