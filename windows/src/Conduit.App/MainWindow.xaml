@@ -609,7 +609,7 @@
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel Grid.Column="0">
                                                                 <TextBlock FontWeight="SemiBold" Foreground="{StaticResource Fg}" FontSize="13">
-                                                                    <Run Text="{Binding AppName}"/><Run Text="  ·  "/><Run Text="{Binding Title}"/>
+                                                                    <Run Text="{Binding AppName, Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Title, Mode=OneWay}"/>
                                                                 </TextBlock>
                                                                 <TextBlock Text="{Binding Text}" Foreground="{StaticResource Muted}"
                                                                            FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"/>
@@ -688,7 +688,7 @@
                     <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
                                Foreground="{StaticResource Muted}" FontSize="13">
                         <Run Text="Only accept if this code matches the one shown on"/>
-                        <Run Text="{Binding PairingDeviceName}" FontWeight="SemiBold" Foreground="{StaticResource Fg}"/><Run Text="."/>
+                        <Run Text="{Binding PairingDeviceName, Mode=OneWay}" FontWeight="SemiBold" Foreground="{StaticResource Fg}"/><Run Text="."/>
                     </TextBlock>
                     <Border Margin="0,20" Background="#0AFFFFFF" BorderBrush="{StaticResource Stroke}"
                             BorderThickness="1" CornerRadius="12" Padding="0,18">
