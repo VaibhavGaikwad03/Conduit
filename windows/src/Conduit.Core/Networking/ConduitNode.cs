@@ -210,6 +210,7 @@ public sealed class ConduitNode : IAsyncDisposable
             }
 
             _known[peer.DeviceId] = peer;
+            PruneStaleDuplicates(peer);
             _log.Information("Peer connected: {Peer} (paired={Paired})", peer, peer.IsPaired);
             PeerConnected?.Invoke(this, peer);
             DevicesChanged?.Invoke(this, EventArgs.Empty);
@@ -281,6 +282,7 @@ public sealed class ConduitNode : IAsyncDisposable
                 DeviceId = peer.DeviceId, Name = peer.Name, Type = peer.Type, PublicKey = publicKey
             });
             peer.IsPaired = true;
+            PruneStaleDuplicates(peer);
         }
 
         var response = Packet.Create(PacketType.PairResponse, b =>
@@ -316,8 +318,37 @@ public sealed class ConduitNode : IAsyncDisposable
                 DeviceId = peer.DeviceId, Name = peer.Name, Type = peer.Type, PublicKey = publicKey
             });
             peer.IsPaired = true;
+            PruneStaleDuplicates(peer);
             DevicesChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// Remove paired-but-offline entries that are almost certainly stale duplicates of a device
+    /// that just came online or paired: same name and type, a different id, and not currently
+    /// connected. This happens when a peer is reinstalled and returns under a new identity,
+    /// orphaning the old pairing so the same phone shows up twice. Only prunes once we trust the
+    /// live device (it's paired), so a genuinely different offline device is left alone.
+    /// </summary>
+    private void PruneStaleDuplicates(DeviceInfo live)
+    {
+        if (!live.IsPaired) return;
+        var stale = _known.Values
+            .Where(d => d.DeviceId != live.DeviceId
+                        && !_peers.ContainsKey(d.DeviceId)
+                        && d.Type == live.Type
+                        && string.Equals(d.Name, live.Name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (stale.Count == 0) return;
+
+        foreach (var d in stale)
+        {
+            _known.TryRemove(d.DeviceId, out _);
+            _store.RemovePaired(d.DeviceId);
+            _suppressReconnect.TryRemove(d.DeviceId, out _);
+            _log.Information("Pruned stale duplicate {Old}, superseded by {New}", d, live);
+        }
+        DevicesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Begin pairing with a discovered device. Returns the 6-digit code to show the user.</summary>

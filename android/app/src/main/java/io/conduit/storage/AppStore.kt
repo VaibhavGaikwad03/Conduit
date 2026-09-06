@@ -12,11 +12,30 @@ import java.util.UUID
  * Persisted identity, settings, and the trusted-device list, backed by SharedPreferences.
  */
 class AppStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("conduit", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("conduit", Context.MODE_PRIVATE)
 
+    /**
+     * A stable identity for this phone. Derived from Settings.Secure.ANDROID_ID so it survives an
+     * app reinstall (same signing key + device + user), which keeps the PC's stored pairing valid
+     * across rebuilds instead of orphaning it under a fresh random id every install. Falls back to
+     * a persisted random UUID when ANDROID_ID is unavailable or the known-buggy shared value.
+     */
     val deviceId: String
-        get() = prefs.getString("deviceId", null) ?: UUID.randomUUID().toString().also {
-            prefs.edit().putString("deviceId", it).apply()
+        get() = prefs.getString("deviceId", null) ?: run {
+            val androidId = runCatching {
+                android.provider.Settings.Secure.getString(
+                    appContext.contentResolver,
+                    android.provider.Settings.Secure.ANDROID_ID,
+                )
+            }.getOrNull()
+            val id = if (!androidId.isNullOrBlank() && androidId != "9774d56d682e549c") {
+                "android-$androidId"
+            } else {
+                UUID.randomUUID().toString()
+            }
+            prefs.edit().putString("deviceId", id).apply()
+            id
         }
 
     var deviceName: String
