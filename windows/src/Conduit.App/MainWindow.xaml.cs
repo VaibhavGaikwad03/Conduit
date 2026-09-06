@@ -78,6 +78,12 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // ---- Incoming pairing prompt ----------------------------------------------
+
+    private void OnAcceptPairing(object sender, RoutedEventArgs e) => _vm.AcceptPairing();
+
+    private void OnRejectPairing(object sender, RoutedEventArgs e) => _vm.RejectPairing();
+
     // ---- Flyout drawer --------------------------------------------------------
 
     private void OnToggleDrawer(object sender, RoutedEventArgs e) => _vm.DrawerOpen = !_vm.DrawerOpen;

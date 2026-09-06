@@ -16,12 +16,15 @@ public sealed class PacketEventArgs(DeviceInfo peer, Packet packet) : EventArgs
     public Packet Packet { get; } = packet;
 }
 
-public sealed class PairingRequestEventArgs(DeviceInfo peer, string code) : EventArgs
+public sealed class PairingRequestEventArgs(DeviceInfo peer, string code, Action<bool> respond) : EventArgs
 {
     public DeviceInfo Peer { get; } = peer;
     public string Code { get; } = code;
-    /// <summary>Set by the UI to accept/reject the pairing.</summary>
-    public bool Accepted { get; set; }
+    /// <summary>
+    /// Called by the UI with the user's decision. The decision is delivered asynchronously (the
+    /// UI can show a non-blocking prompt), and only the first call is honoured.
+    /// </summary>
+    public Action<bool> Respond { get; } = respond;
 }
 
 /// <summary>
@@ -284,39 +287,53 @@ public sealed class ConduitNode : IAsyncDisposable
         string publicKey = packet.GetString("publicKey") ?? "";
         _log.Information("Pair request from {Peer}, code {Code}", peer, code);
 
-        var args = new PairingRequestEventArgs(peer, code);
-        PairingRequested?.Invoke(this, args);
-
-        bool accepted = args.Accepted || _store.Config.AutoAcceptFromPaired && _store.IsPaired(peer.DeviceId);
-        if (accepted && !string.IsNullOrEmpty(publicKey))
+        // The decision comes back through respond(), so the UI can confirm the code with a
+        // non-blocking prompt instead of a modal that stalls this connection's read loop.
+        int answered = 0;
+        void Respond(bool accepted)
         {
-            _store.AddPaired(new PairedDevice
+            if (Interlocked.Exchange(ref answered, 1) != 0) return; // honour only the first answer
+
+            if (accepted && !string.IsNullOrEmpty(publicKey))
             {
-                DeviceId = peer.DeviceId, Name = peer.Name, Type = peer.Type, PublicKey = publicKey
+                _store.AddPaired(new PairedDevice
+                {
+                    DeviceId = peer.DeviceId, Name = peer.Name, Type = peer.Type, PublicKey = publicKey
+                });
+                peer.IsPaired = true;
+                PruneStaleDuplicates(peer);
+            }
+
+            var response = Packet.Create(PacketType.PairResponse, b =>
+            {
+                b["accepted"] = accepted;
+                b["publicKey"] = _crypto.PublicKeyBase64;
             });
-            peer.IsPaired = true;
-            PruneStaleDuplicates(peer);
+            if (accepted)
+            {
+                _ = conn.SendAsync(response);
+                DevicesChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                // Reject: send the refusal, then drop the session so it doesn't linger as "connected".
+                _ = Task.Run(async () =>
+                {
+                    try { await conn.SendAsync(response).ConfigureAwait(false); } catch { /* best effort */ }
+                    await conn.DisposeAsync().ConfigureAwait(false);
+                });
+            }
+            _log.Information("Pair request from {Peer} {Result}", peer, accepted ? "accepted" : "rejected");
         }
 
-        var response = Packet.Create(PacketType.PairResponse, b =>
-        {
-            b["accepted"] = accepted;
-            b["publicKey"] = _crypto.PublicKeyBase64;
-        });
-        if (accepted)
-        {
-            _ = conn.SendAsync(response);
-            DevicesChanged?.Invoke(this, EventArgs.Empty);
-        }
+        // Auto-accept a peer we already trust (if enabled); otherwise ask the UI. With no UI
+        // wired we reject — the 6-digit code must be confirmed by a human, never silently.
+        if (_store.Config.AutoAcceptFromPaired && _store.IsPaired(peer.DeviceId))
+            Respond(true);
+        else if (PairingRequested is { } handler)
+            handler(this, new PairingRequestEventArgs(peer, code, Respond));
         else
-        {
-            // Reject: send the refusal, then drop the session so it doesn't linger as "connected".
-            _ = Task.Run(async () =>
-            {
-                try { await conn.SendAsync(response); } catch { /* best effort */ }
-                await conn.DisposeAsync();
-            });
-        }
+            Respond(false);
     }
 
     private void HandlePairResponse(DeviceInfo peer, Packet packet)

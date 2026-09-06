@@ -67,18 +67,10 @@ public partial class App : Application
         {
             _store = new AppStore().Load();
             _node = new ConduitNode(_store);
-            // Incoming pair request: pop the window and ask the user to confirm the 6-digit code
-            // (matching the one shown on the phone) before trusting the peer. Runs synchronously
-            // so args.Accepted is set before the node sends its pair-response.
-            _node.PairingRequested += (_, args) => Dispatcher.Invoke(() =>
-            {
-                ShowWindow();
-                var result = System.Windows.MessageBox.Show(
-                    $"Pair with {args.Peer.Name}?\n\nOnly accept if this code matches the one shown on {args.Peer.Name}:\n\n        {args.Code}",
-                    "Conduit — pairing request",
-                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
-                args.Accepted = result == System.Windows.MessageBoxResult.Yes;
-            });
+            // Incoming pair request: bring the window to the front so the in-app pairing prompt
+            // (shown by MainViewModel, which confirms the 6-digit code) is visible. The accept/
+            // reject decision is handled there, asynchronously — not by a blocking MessageBox.
+            _node.PairingRequested += (_, _) => Dispatcher.Invoke(ShowWindow);
 
             _tray = CreateTray();
             Notifications = new NotificationService(_tray);

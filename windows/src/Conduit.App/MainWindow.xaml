@@ -671,5 +671,43 @@
             <TextBlock Text="{Binding ToastText}" Foreground="{StaticResource Fg}"
                        FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="460"/>
         </Border>
+
+        <!-- ============================ Incoming pairing prompt ============================ -->
+        <Grid Grid.Column="0" Grid.ColumnSpan="2"
+              Visibility="{Binding HasPendingPairing, Converter={StaticResource BoolToVis}}">
+            <Rectangle Fill="#B3000000"/>
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="430"
+                    Background="{StaticResource Card}" BorderBrush="{StaticResource Stroke}"
+                    BorderThickness="1" CornerRadius="16" Padding="28">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="34" ShadowDepth="0" Opacity="0.55" Color="#00060C"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="Pairing request" FontSize="18" FontWeight="Bold"
+                               Foreground="{StaticResource Fg}"/>
+                    <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
+                               Foreground="{StaticResource Muted}" FontSize="13">
+                        <Run Text="Only accept if this code matches the one shown on"/>
+                        <Run Text="{Binding PairingDeviceName}" FontWeight="SemiBold" Foreground="{StaticResource Fg}"/><Run Text="."/>
+                    </TextBlock>
+                    <Border Margin="0,20" Background="#0AFFFFFF" BorderBrush="{StaticResource Stroke}"
+                            BorderThickness="1" CornerRadius="12" Padding="0,18">
+                        <TextBlock Text="{Binding PairingCode}" HorizontalAlignment="Center"
+                                   FontSize="36" FontWeight="Bold" Foreground="{StaticResource Cyan}"
+                                   FontFamily="Consolas"/>
+                    </Border>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Style="{StaticResource GhostButton}" Height="44"
+                                Margin="0,0,6,0" Content="Reject" Click="OnRejectPairing"/>
+                        <Button Grid.Column="1" Style="{StaticResource PrimaryButton}" Height="44"
+                                Margin="6,0,0,0" Content="Pair" Click="OnAcceptPairing"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -204,6 +204,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _toastTimer.Start();
     }
 
+    // ---- Incoming pairing prompt (in-app, replaces the old MessageBox) ----
+    private Action<bool>? _pairingRespond;
+
+    private bool _hasPendingPairing;
+    public bool HasPendingPairing { get => _hasPendingPairing; private set => Set(ref _hasPendingPairing, value); }
+
+    private string _pairingDeviceName = "";
+    public string PairingDeviceName { get => _pairingDeviceName; private set => Set(ref _pairingDeviceName, value); }
+
+    private string _pairingCode = "";
+    public string PairingCode { get => _pairingCode; private set => Set(ref _pairingCode, value); }
+
+    /// <summary>Show the confirm prompt for an incoming pair request; the user's answer flows back via respond().</summary>
+    public void ShowPairingPrompt(string deviceName, string code, Action<bool> respond)
+    {
+        // If another request was already pending, reject it before replacing it.
+        _pairingRespond?.Invoke(false);
+        _pairingRespond = respond;
+        PairingDeviceName = deviceName;
+        PairingCode = code;
+        HasPendingPairing = true;
+    }
+
+    public void AcceptPairing() { var r = _pairingRespond; _pairingRespond = null; HasPendingPairing = false; r?.Invoke(true); }
+    public void RejectPairing() { var r = _pairingRespond; _pairingRespond = null; HasPendingPairing = false; r?.Invoke(false); }
+
     public MainViewModel(ConduitNode node, FeatureCoordinator coordinator, NotificationService notifications)
     {
         _node = node;
@@ -219,6 +245,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         _coordinator.FileProgress += (_, p) => Dispatch(() => OnFileProgress(p));
         _coordinator.SearchResults += (_, r) => Dispatch(() => OnSearchResults(r));
         _coordinator.DirListing += (_, d) => Dispatch(() => OnDirListing(d));
+        _node.PairingRequested += (_, args) =>
+            Dispatch(() => ShowPairingPrompt(args.Peer.Name, args.Code, args.Respond));
         notifications.NotificationsChanged += (_, _) => Dispatch(() => RefreshNotifications(notifications));
 
         RefreshDevices();
