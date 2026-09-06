@@ -174,6 +174,7 @@ class ConduitNode(private val store: AppStore) {
                 conn.close()
             } else {
                 known[peer.deviceId] = peer
+                pruneStaleDuplicates(peer)
                 log.i("Peer connected: ${peer.name} (paired=${peer.isPaired})")
                 onPeerConnected?.invoke(peer)
                 onDevicesChanged?.invoke()
@@ -232,6 +233,7 @@ class ConduitNode(private val store: AppStore) {
                 if (accepted && publicKey.isNotEmpty()) {
                     store.addPaired(PairedDevice(peer.deviceId, peer.name, peer.type, publicKey))
                     peer.isPaired = true
+                    pruneStaleDuplicates(peer)
                 }
                 val response = Packet.create(PacketType.PAIR_RESPONSE) {
                     put("accepted", accepted)
@@ -258,8 +260,33 @@ class ConduitNode(private val store: AppStore) {
         if (accepted && publicKey.isNotEmpty()) {
             store.addPaired(PairedDevice(peer.deviceId, peer.name, peer.type, publicKey))
             peer.isPaired = true
+            pruneStaleDuplicates(peer)
             onDevicesChanged?.invoke()
         }
+    }
+
+    /**
+     * Remove paired-but-offline entries that are almost certainly stale duplicates of a device
+     * that just came online or paired: same name and type, a different id, and not currently
+     * connected. Happens when a peer is reinstalled and returns under a new identity, so the same
+     * device would otherwise show up twice. Only prunes once the live device is trusted (paired).
+     */
+    private fun pruneStaleDuplicates(live: DeviceInfo) {
+        if (!live.isPaired) return
+        val stale = known.values.filter {
+            it.deviceId != live.deviceId &&
+                !peers.containsKey(it.deviceId) &&
+                it.type == live.type &&
+                it.name.equals(live.name, ignoreCase = true)
+        }
+        if (stale.isEmpty()) return
+        for (d in stale) {
+            known.remove(d.deviceId)
+            store.removePaired(d.deviceId)
+            suppressReconnect.remove(d.deviceId)
+            log.i("Pruned stale duplicate ${d.name} (${d.deviceId}), superseded by ${live.name}")
+        }
+        onDevicesChanged?.invoke()
     }
 
     /** Begin pairing with a discovered device; returns the 6-digit code to show the user. */
