@@ -6,16 +6,18 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// ---- Brand palette (matches the Conduit logo) ----
-val Cyan = Color(0xFF2FC6E8)
+// ---- Brand palette (matches the Conduit logo + the Windows app) ----
+val Cyan = Color(0xFF38CDEC)
 val Blue = Color(0xFF4F8CFF)
 val NavyBg = Color(0xFF0A1622)
 val NavyBg2 = Color(0xFF0D1D2C)
-val Card = Color(0xFF132536)
-val CardHi = Color(0xFF183048)
-val Stroke = Color(0xFF22415C)
-val TextHi = Color(0xFFEAF2F8)
-val TextMuted = Color(0xFF8DA0B4)
+val Card = Color(0xFF15293B)
+val CardHi = Color(0xFF1D3A54)
+val Stroke = Color(0xFF243F58)
+val StrokeSoft = Color(0xFF1B3145)
+val TextHi = Color(0xFFEDF3F8)
+val TextMuted = Color(0xFF93A6B9)
+val Faint = Color(0xFF6B7F93)
 val Success = Color(0xFF34D399)
 val Warn = Color(0xFFF5B44C)
 

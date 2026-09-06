@@ -38,12 +38,42 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Backspace
+import androidx.compose.material.icons.automirrored.rounded.InsertDriveFile
+import androidx.compose.material.icons.automirrored.rounded.KeyboardReturn
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.ArrowBackIosNew
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.ContentPaste
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Mouse
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -53,6 +83,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -91,6 +122,7 @@ import io.conduit.runtime.TransferUi
 import io.conduit.service.ConduitService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -173,6 +205,14 @@ private fun ConduitScreen(
     val pendingPairing by ConduitRuntime.pendingPairing.collectAsState()
     val bgScope = CoroutineScope(Dispatchers.Main)
     val context = LocalContext.current
+
+    // Auto-dismiss the transient event banner a few seconds after it last changed.
+    LaunchedEffect(lastEvent) {
+        if (lastEvent.isNotEmpty()) {
+            delay(3500)
+            ConduitRuntime.lastEvent.value = ""
+        }
+    }
 
     // Notification / device-admin state — re-checked every time the app resumes.
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -515,12 +555,12 @@ private fun DrawerContent(
                 Modifier.fillMaxWidth().padding(14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("⚙", fontSize = 20.sp)
+                Icon(Icons.Rounded.Settings, contentDescription = null, tint = Cyan, modifier = Modifier.size(22.dp))
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text("Settings", color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                     Text("Notification mirroring, remote lock", color = TextMuted, fontSize = 11.sp)
                 }
-                Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Faint, modifier = Modifier.size(22.dp))
             }
         }
     }
@@ -546,13 +586,15 @@ private fun SettingsScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "‹",
-                color = Cyan, fontSize = 34.sp, fontWeight = FontWeight.Bold,
+            Icon(
+                Icons.Rounded.ArrowBackIosNew,
+                contentDescription = "Back",
+                tint = Cyan,
                 modifier = Modifier
                     .clip(CircleShape)
                     .clickable(onClick = onBack)
-                    .padding(horizontal = 10.dp),
+                    .padding(10.dp)
+                    .size(22.dp),
             )
             Spacer(Modifier.width(4.dp))
             Text("Settings", color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Bold)
@@ -673,13 +715,15 @@ private fun MainContent(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                "☰",
-                color = TextHi, fontSize = 26.sp,
+            Icon(
+                Icons.Rounded.Menu,
+                contentDescription = "Devices",
+                tint = TextHi,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .clickable(onClick = onMenu)
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .size(26.dp),
             )
             Spacer(Modifier.width(6.dp))
             Text(
@@ -841,9 +885,9 @@ private fun DeviceDetail(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
-                ActionRow("📎", "Send file", "Pick a file to send to this device", onSendFile)
+                ActionRow(Icons.AutoMirrored.Rounded.Send, "Send file", "Pick a file to send to this device", onSendFile)
                 RowDivider()
-                ActionRow("📋", "Send clipboard", "Copy text here, then send it over", onSendClipboard)
+                ActionRow(Icons.Rounded.ContentPaste, "Send clipboard", "Copy text here, then send it over", onSendClipboard)
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -862,7 +906,7 @@ private fun DeviceDetail(
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            ActionRow("🖥️", "Mirror & control PC", "See the PC screen and tap to control it", onViewScreen)
+            ActionRow(Icons.Rounded.Cast, "Mirror & control PC", "See the PC screen and tap to control it", onViewScreen)
         }
         Spacer(Modifier.height(20.dp))
         SectionLabel("TOUCHPAD")
@@ -937,15 +981,15 @@ private fun MediaRemoteCard(onCommand: (String, Double?) -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MediaButton("⏮", Modifier.weight(1f)) { onCommand("prev", null) }
-                MediaButton("⏯", Modifier.weight(1f), primary = true) { onCommand("pause", null) }
-                MediaButton("⏭", Modifier.weight(1f)) { onCommand("next", null) }
+                MediaButton(Icons.Rounded.SkipPrevious, Modifier.weight(1f)) { onCommand("prev", null) }
+                MediaButton(Icons.Rounded.PlayArrow, Modifier.weight(1f), primary = true) { onCommand("pause", null) }
+                MediaButton(Icons.Rounded.SkipNext, Modifier.weight(1f)) { onCommand("next", null) }
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MediaButton("🔉", Modifier.weight(1f)) { onCommand("volume", 0.4) }
-                MediaButton("🔇", Modifier.weight(1f)) { onCommand("mute", null) }
-                MediaButton("🔊", Modifier.weight(1f)) { onCommand("volume", 0.6) }
+                MediaButton(Icons.AutoMirrored.Rounded.VolumeDown, Modifier.weight(1f)) { onCommand("volume", 0.4) }
+                MediaButton(Icons.AutoMirrored.Rounded.VolumeOff, Modifier.weight(1f)) { onCommand("mute", null) }
+                MediaButton(Icons.AutoMirrored.Rounded.VolumeUp, Modifier.weight(1f)) { onCommand("volume", 0.6) }
             }
         }
     }
@@ -966,16 +1010,20 @@ private fun ControlPcCard(onCommand: (String) -> Unit) {
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PcButton("🔒", "Lock", Modifier.weight(1f)) { onCommand("lock") }
-                PcButton("😴", "Sleep", Modifier.weight(1f)) { onCommand("sleep") }
-                PcButton("🔔", "Find PC", Modifier.weight(1f)) { onCommand("findpc") }
+                PcButton(Icons.Rounded.Lock, "Lock", Modifier.weight(1f)) { onCommand("lock") }
+                PcButton(Icons.Rounded.Bedtime, "Sleep", Modifier.weight(1f)) { onCommand("sleep") }
+                PcButton(Icons.Rounded.NotificationsActive, "Find PC", Modifier.weight(1f)) { onCommand("findpc") }
             }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = { confirmShutdown = true },
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth().height(46.dp),
-            ) { Text("⏻  Shut down PC", color = Warn, fontWeight = FontWeight.SemiBold) }
+            ) {
+                Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null, tint = Warn,
+                    modifier = Modifier.size(18.dp))
+                Text("  Shut down PC", color = Warn, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 
@@ -1049,16 +1097,16 @@ private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PcButton("🖱", "Left", Modifier.weight(1f)) {
+                PcButton(Icons.Rounded.Mouse, "Left", Modifier.weight(1f)) {
                     onPcInput { put("action", "click"); put("button", "left") }
                 }
-                PcButton("🖱", "Right", Modifier.weight(1f)) {
+                PcButton(Icons.Rounded.Mouse, "Right", Modifier.weight(1f)) {
                     onPcInput { put("action", "click"); put("button", "right") }
                 }
-                PcButton("⬆", "Scroll", Modifier.weight(1f)) {
+                PcButton(Icons.Rounded.KeyboardArrowUp, "Scroll", Modifier.weight(1f)) {
                     onPcInput { put("action", "scroll"); put("amount", 120) }
                 }
-                PcButton("⬇", "Scroll", Modifier.weight(1f)) {
+                PcButton(Icons.Rounded.KeyboardArrowDown, "Scroll", Modifier.weight(1f)) {
                     onPcInput { put("action", "scroll"); put("amount", -120) }
                 }
             }
@@ -1079,14 +1127,18 @@ private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.height(52.dp),
-                ) { Text("Send", fontWeight = FontWeight.SemiBold) }
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = null, tint = NavyBg,
+                        modifier = Modifier.size(18.dp))
+                    Text("  Send", fontWeight = FontWeight.SemiBold)
+                }
             }
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PcButton("⏎", "Enter", Modifier.weight(1f)) {
+                PcButton(Icons.AutoMirrored.Rounded.KeyboardReturn, "Enter", Modifier.weight(1f)) {
                     onPcInput { put("action", "key"); put("key", "enter") }
                 }
-                PcButton("⌫", "Back", Modifier.weight(1f)) {
+                PcButton(Icons.AutoMirrored.Rounded.Backspace, "Back", Modifier.weight(1f)) {
                     onPcInput { put("action", "key"); put("key", "backspace") }
                 }
             }
@@ -1094,9 +1146,9 @@ private fun TouchpadCard(onPcInput: (org.json.JSONObject.() -> Unit) -> Unit) {
     }
 }
 
-/** A labelled control button (emoji over a caption) used by the Control-PC and Touchpad cards. */
+/** A labelled control button (icon over a caption) used by the Control-PC and Touchpad cards. */
 @Composable
-private fun PcButton(emoji: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun PcButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         shape = RoundedCornerShape(10.dp),
@@ -1104,7 +1156,8 @@ private fun PcButton(emoji: String, label: String, modifier: Modifier = Modifier
         modifier = modifier.height(56.dp),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(emoji, fontSize = 18.sp)
+            Icon(icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(3.dp))
             Text(label, fontSize = 11.sp, color = TextHi)
         }
     }
@@ -1136,7 +1189,11 @@ private fun OpenLinkCard(onOpenLink: (String) -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.height(52.dp),
-            ) { Text("Open", fontWeight = FontWeight.SemiBold) }
+            ) {
+                Icon(Icons.Rounded.Language, contentDescription = null, tint = NavyBg,
+                    modifier = Modifier.size(18.dp))
+                Text("  Open", fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -1173,7 +1230,11 @@ private fun FileSearchCard(onSearch: (String) -> Unit, onDownload: (SearchResult
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.height(52.dp),
-                ) { Text("Search", fontWeight = FontWeight.SemiBold) }
+                ) {
+                    Icon(Icons.Rounded.Search, contentDescription = null, tint = NavyBg,
+                        modifier = Modifier.size(18.dp))
+                    Text("  Search", fontWeight = FontWeight.SemiBold)
+                }
             }
 
             val close = {
@@ -1234,7 +1295,10 @@ private fun SearchResultItem(r: SearchResultUi, onDownload: (SearchResultUi) -> 
             onClick = { onDownload(r) },
             shape = RoundedCornerShape(10.dp),
             modifier = Modifier.height(40.dp),
-        ) { Text("⬇  Get", color = TextHi, fontWeight = FontWeight.SemiBold) }
+        ) {
+            Icon(Icons.Rounded.Download, contentDescription = null, tint = TextHi, modifier = Modifier.size(16.dp))
+            Text("  Get", color = TextHi, fontWeight = FontWeight.SemiBold)
+        }
     }
 }
 
@@ -1266,14 +1330,20 @@ private fun FileBrowseCard(
                     colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                ) { Text("📂  Browse", fontWeight = FontWeight.SemiBold) }
+                ) {
+                    Icon(Icons.Rounded.Folder, contentDescription = null, tint = NavyBg, modifier = Modifier.size(18.dp))
+                    Text("  Browse", fontWeight = FontWeight.SemiBold)
+                }
             } else {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         path, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
-                    if (canGoUp) TextButton(onClick = onUp) { Text("⬆  Up", color = TextHi) }
+                    if (canGoUp) TextButton(onClick = onUp) {
+                        Icon(Icons.Rounded.ArrowUpward, contentDescription = null, tint = TextHi, modifier = Modifier.size(16.dp))
+                        Text("  Up", color = TextHi)
+                    }
                     TextButton(onClick = { ConduitRuntime.closeBrowse() }) { Text("✕", color = TextHi) }
                 }
                 StatusLine(status)
@@ -1303,7 +1373,10 @@ private fun BrowseEntryItem(
             .padding(top = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (e.isDir) "📁" else "📄", fontSize = 18.sp)
+        Icon(
+            if (e.isDir) Icons.Rounded.Folder else Icons.AutoMirrored.Rounded.InsertDriveFile,
+            contentDescription = null, tint = Cyan, modifier = Modifier.size(20.dp),
+        )
         Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)) {
             Text(
                 e.name, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
@@ -1312,7 +1385,8 @@ private fun BrowseEntryItem(
             Text(if (e.isDir) "Folder" else formatSize(e.size), color = TextMuted, fontSize = 11.sp)
         }
         when {
-            e.isDir -> Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            e.isDir -> Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Faint,
+                modifier = Modifier.size(22.dp))
             downloading -> Column(
                 Modifier.width(96.dp),
                 horizontalAlignment = Alignment.End,
@@ -1335,7 +1409,10 @@ private fun BrowseEntryItem(
                 onClick = { onDownload(e) },
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.height(40.dp),
-            ) { Text("⬇  Get", color = TextHi, fontWeight = FontWeight.SemiBold) }
+            ) {
+                Icon(Icons.Rounded.Download, contentDescription = null, tint = TextHi, modifier = Modifier.size(16.dp))
+                Text("  Get", color = TextHi, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -1350,25 +1427,25 @@ private fun formatSize(bytes: Long): String {
 }
 
 @Composable
-private fun MediaButton(label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
+private fun MediaButton(icon: ImageVector, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
     if (primary) {
         Button(
             onClick = onClick,
             colors = ButtonDefaults.buttonColors(containerColor = Cyan, contentColor = NavyBg),
             shape = RoundedCornerShape(10.dp),
             modifier = modifier.height(48.dp),
-        ) { Text(label, fontSize = 20.sp) }
+        ) { Icon(icon, contentDescription = null, tint = NavyBg, modifier = Modifier.size(24.dp)) }
     } else {
         OutlinedButton(
             onClick = onClick,
             shape = RoundedCornerShape(10.dp),
             modifier = modifier.height(48.dp),
-        ) { Text(label, fontSize = 20.sp, color = TextHi) }
+        ) { Icon(icon, contentDescription = null, tint = TextHi, modifier = Modifier.size(24.dp)) }
     }
 }
 
 @Composable
-private fun ActionRow(icon: String, title: String, subtitle: String, onClick: () -> Unit) {
+private fun ActionRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -1376,12 +1453,13 @@ private fun ActionRow(icon: String, title: String, subtitle: String, onClick: ()
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(icon, fontSize = 22.sp)
+        Icon(icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(24.dp))
         Column(Modifier.weight(1f).padding(start = 14.dp)) {
             Text(title, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
             Text(subtitle, color = TextMuted, fontSize = 12.sp)
         }
-        Text("›", color = TextMuted, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = Faint,
+            modifier = Modifier.size(22.dp))
     }
 }
 
