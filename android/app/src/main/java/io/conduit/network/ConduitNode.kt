@@ -205,6 +205,18 @@ class ConduitNode(private val store: AppStore) {
                 onDevicesChanged?.invoke()
                 conn.close()
             }
+            PacketType.UNPAIR -> {
+                // The peer forgot us — drop our pairing too so both sides return to a clean
+                // unpaired state instead of one side endlessly trying to reconnect/re-pair.
+                log.i("${peer.name} asked to unpair")
+                store.removePaired(peer.deviceId)
+                peer.isPaired = false
+                suppressReconnect.add(peer.deviceId)
+                peers.remove(peer.deviceId)
+                onPeerDisconnected?.invoke(peer)
+                onDevicesChanged?.invoke()
+                conn.close()
+            }
             else -> {
                 // Security gate: only paired peers may use features. An unpaired peer can still
                 // complete the handshake and exchange pair-request/response (handled above), but
@@ -346,10 +358,17 @@ class ConduitNode(private val store: AppStore) {
      * identity, leaving the old one orphaned).
      */
     fun forget(deviceId: String) {
-        disconnect(deviceId)
+        val conn = peers.remove(deviceId)
+        val dev = known[deviceId]
         store.removePaired(deviceId)
         known.remove(deviceId)
         suppressReconnect.remove(deviceId)
+        // Send the unpair as the final flushed packet so the peer reliably forgets us too and
+        // doesn't keep the pairing and immediately try to reconnect/re-pair (mismatched limbo).
+        if (conn != null) {
+            dev?.let { onPeerDisconnected?.invoke(it) }
+            conn.closeWith(Packet.create(PacketType.UNPAIR))
+        }
         log.i("Forgot device $deviceId")
         onDevicesChanged?.invoke()
     }

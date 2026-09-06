@@ -41,6 +41,7 @@ public static class PacketType
     public const string DesktopStop = "desktop-stop";
     public const string Input = "input";
     public const string Disconnect = "disconnect";
+    public const string Unpair = "unpair";
     public const string Error = "error";
 }
 

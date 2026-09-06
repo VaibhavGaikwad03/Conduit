@@ -135,6 +135,7 @@ public sealed class ConduitNode : IAsyncDisposable
     private void OnBeaconReceived(object? sender, BeaconEventArgs e)
     {
         var device = e.Device;
+        device.IsPaired = _store.IsPaired(device.DeviceId);
         bool isNew = !_known.ContainsKey(device.DeviceId);
         _known.AddOrUpdate(device.DeviceId, device, (_, existing) =>
         {
@@ -142,9 +143,11 @@ public sealed class ConduitNode : IAsyncDisposable
             existing.IpAddress = device.IpAddress;
             existing.TcpPort = device.TcpPort;
             existing.LastSeen = DateTimeOffset.UtcNow;
+            // Refresh pairing status on the retained entry too, so forget/pair on the other
+            // side is reflected even when we only ever hear beacons from this peer.
+            existing.IsPaired = device.IsPaired;
             return existing;
         });
-        device.IsPaired = _store.IsPaired(device.DeviceId);
 
         if (isNew)
         {
@@ -248,6 +251,16 @@ public sealed class ConduitNode : IAsyncDisposable
                 _log.Information("{Peer} disconnected", peer);
                 _suppressReconnect[peer.DeviceId] = 1;
                 _ = conn.DisposeAsync();
+                return;
+            case PacketType.Unpair:
+                // The peer forgot us — drop our pairing too so both sides return to a clean
+                // unpaired state instead of one side endlessly trying to reconnect/re-pair.
+                _log.Information("{Peer} asked to unpair", peer);
+                _store.RemovePaired(peer.DeviceId);
+                peer.IsPaired = false;
+                _suppressReconnect[peer.DeviceId] = 1;
+                _ = conn.DisposeAsync();
+                DevicesChanged?.Invoke(this, EventArgs.Empty);
                 return;
             default:
                 // Security gate: only paired peers may use features. An unpaired peer can still
@@ -416,6 +429,13 @@ public sealed class ConduitNode : IAsyncDisposable
     /// </summary>
     public async Task ForgetAsync(string deviceId)
     {
+        // Tell the peer to forget us too, so it doesn't keep the pairing and immediately try to
+        // reconnect/re-pair, leaving the two sides in a mismatched paired/unpaired limbo.
+        if (_peers.TryGetValue(deviceId, out var conn))
+        {
+            try { await conn.SendAsync(Packet.Create(PacketType.Unpair)).ConfigureAwait(false); }
+            catch (Exception ex) { _log.Debug(ex, "Could not send unpair notice to {Id}", deviceId); }
+        }
         await DisconnectAsync(deviceId).ConfigureAwait(false);
         _store.RemovePaired(deviceId);
         _known.TryRemove(deviceId, out _);

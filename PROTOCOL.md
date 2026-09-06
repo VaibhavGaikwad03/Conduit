@@ -102,6 +102,7 @@ Every decrypted payload is a JSON object with this envelope:
 | `desktop-start`       | android → win    | `{ port }` — ask the PC to mirror its **primary display** to this TCP port on the phone (default 5466). The PC connects out to `phoneIp:port` and streams H.264 there |
 | `desktop-stop`        | android → win    | `{}` — stop mirroring the PC desktop |
 | `disconnect`          | both             | `{}` — sender is closing the session on purpose; receiver should not auto-reconnect until the user reconnects |
+| `unpair`              | both             | `{}` — sender forgot this peer; receiver deletes its own pairing too so both sides return to a clean unpaired state (sent as the final flushed packet, then the session closes) |
 | `error`               | both             | `{ code, message }` |
 
 **Video streams** (webcam, phone-screen mirror, PC-desktop mirror) are far too heavy for the JSON

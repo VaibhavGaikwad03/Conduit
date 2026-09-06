@@ -40,6 +40,7 @@ object PacketType {
     const val DESKTOP_STOP = "desktop-stop"
     const val INPUT = "input"
     const val DISCONNECT = "disconnect"
+    const val UNPAIR = "unpair"
     const val ERROR = "error"
 }
 
