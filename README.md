@@ -9,25 +9,25 @@ Your phone and PC, working as a single seamless device — everything stays on y
 ### Windows desktop app
 
 <p align="center">
-  <img src="docs/screenshots/windows-home.png" width="760" alt="Conduit on Windows, connected to a paired phone"><br>
-  <em>Connected to a paired phone — live battery, ringer and now-playing status, with quick actions for clipboard, files, lock and ring.</em>
+  <img src="docs/screenshots/windows-overview.png" width="820" alt="Conduit on Windows, connected to a paired phone"><br>
+  <em>Connected to a paired phone — live battery, ringer and now-playing status, with quick actions, a media remote, and open-a-link on the phone.</em>
 </p>
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/windows-actions.png" width="100%" alt="Open link, search, browse and media remote"><br>
-      <em>Open a link on the phone, search or browse its files, and control media playback.</em>
+      <img src="docs/screenshots/windows-files.png" width="100%" alt="Search and browse the phone's files from the PC"><br>
+      <em>Search the phone's files by name, or browse its folders and pull any file on demand.</em>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/windows-features.png" width="100%" alt="Media remote, webcam, screen mirror and notifications"><br>
-      <em>Media remote, use the phone as a webcam, mirror its screen, and see notifications from the phone.</em>
+      <img src="docs/screenshots/windows-screen.png" width="100%" alt="Use the phone as a webcam or mirror its screen"><br>
+      <em>Use the phone's camera as a virtual webcam, or mirror its screen into a window on the PC.</em>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/screenshots/windows-browse.png" width="100%" alt="Browsing the phone's folders from the PC"><br>
-      <em>Browse the phone's folders from the PC and pull any file on demand.</em>
+      <img src="docs/screenshots/windows-notifications.png" width="100%" alt="Phone notifications mirrored on the PC"><br>
+      <em>Notifications from the phone, mirrored on the PC.</em>
     </td>
     <td width="50%" valign="top">
       <img src="docs/screenshots/windows-webcam.png" width="100%" alt="Phone used as a webcam (Conduit Camera) in Google Meet"><br>
