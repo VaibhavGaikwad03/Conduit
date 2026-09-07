@@ -46,12 +46,22 @@ Your phone and PC, working as a single seamless device — everything stays on y
 <table>
   <tr>
     <td width="50%" align="center" valign="top">
-      <img src="docs/screenshots/android-home.jpg" width="300" alt="Conduit on Android, connected to a paired PC"><br>
-      <em>Connected to a paired PC — send files and clipboard, open links, and search or browse the PC's files.</em>
+      <img src="docs/screenshots/android-overview.jpg" width="300" alt="Conduit on Android, connected to a paired PC"><br>
+      <em>Connected to a paired PC — send files and clipboard, and open a link on the PC.</em>
     </td>
     <td width="50%" align="center" valign="top">
-      <img src="docs/screenshots/android-mirror-touchpad.jpg" width="300" alt="Mirror and control the PC, with a trackpad"><br>
-      <em>Mirror and control the PC from the phone, with a trackpad for precise cursor control.</em>
+      <img src="docs/screenshots/android-files.jpg" width="300" alt="Search and browse the PC's files from the phone"><br>
+      <em>Search the PC's files by name, or browse its folders and pull any file across.</em>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/android-screen.jpg" width="300" alt="Mirror and control the PC, with a trackpad and keyboard"><br>
+      <em>Mirror and control the PC, with a trackpad and keyboard for precise input.</em>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/android-control.jpg" width="300" alt="Control the PC — lock, sleep, find, shut down, and media remote"><br>
+      <em>Control the PC — lock, sleep, find or shut it down, plus a media remote.</em>
     </td>
   </tr>
 </table>
